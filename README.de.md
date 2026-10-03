@@ -15,7 +15,8 @@ Verbraucher und ein E-Auto – mit leuchtenden Stromflüssen, die Richtung und L
 
 - **PV-Total** mit beliebig vielen Anlagen (Leistung + Ertrag heute) und **PV-Prognose**
   (Heute / Rest / Morgen)
-- **Speicher** – mehrere Batterien mit Ladestand und Lade-/Entladeleistung
+- **Speicher** – mehrere Batterien mit Ladestand (grün beim Laden, rot beim Entladen) und
+  Lade-/Entladeleistung
 - **Netz** mit Bezug/Einspeisung heute, **Haus** mit Gesamtverbrauch
 - **E-Auto** – Ladestand und Ladeleistung auf einen Blick, Steckerstatus, Reichweite, Restzeit
   und bis zu sechs Zusatzwerte; gezeichnete Grafik oder eigenes Foto

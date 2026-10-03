@@ -15,7 +15,8 @@ electric car and glowing power flows that show direction and power.
 
 - **PV total** with any number of arrays (power + yield today) and a **PV forecast**
   (today / remaining / tomorrow)
-- **Storage** – several batteries with state of charge and charge/discharge power
+- **Storage** – several batteries with state of charge (green while charging, red while
+  discharging) and charge/discharge power
 - **Grid** with import/export today, **house** with total consumption
 - **Electric car** – charge level and charging power at a glance, plug state, range, time to
   full and up to six extra values; drawn artwork or your own photo

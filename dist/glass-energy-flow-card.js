@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.3.0";
+  const CARD_VERSION = "1.3.1";
 
   // ------------------------------------------------------------------ i18n
   // The UI follows Home Assistant's language: German for "de", English
@@ -1739,6 +1739,8 @@ function step1Battery(x,y,w,h,b,compact) {
   const artX=x+w-artW-10, textX=x+(compact?29:36);
   const room=artX-textX-7;
   const soc=b.socValue==null?"–":Math.round(level)+" %";
+  // charge level in green while charging, red while discharging, neutral at rest
+  const socFill=b.charging?inkify("#22e6a4",LIGHT):b.active?inkify("#ff5d6c",LIGHT):"currentColor";
   const barW=compact?8:11,barH=compact?36:45,barX=x+12,barY=y+10;
   return `<g class="step1-battery clickable" data-entity="${esc(b.soc||b.power)}">
     <rect class="glass" x="${x}" y="${y}" width="${w}" height="${h}" rx="14"/>
@@ -1746,7 +1748,7 @@ function step1Battery(x,y,w,h,b,compact) {
     <rect x="${barX}" y="${barY+barH*(1-level/100)}" width="${barW}" height="${barH*level/100}" rx="4" fill="${inkify(accent,LIGHT)}"/>
     ${artwork(artX,y+5,artH,image,b.icon||"mdi:battery",accent,undefined,artW)}
     <text class="step1-battery-soc" x="${textX}" y="${y+(compact?26:31)}"
-      style="font-size:${step1Fit(soc,room,compact?17:23,700)}px;font-weight:700">${esc(soc)}</text>
+      style="font-size:${step1Fit(soc,room,compact?17:23,700)}px;font-weight:700;fill:${socFill}">${esc(soc)}</text>
     <text class="step1-battery-name" x="${textX}" y="${y+(compact?44:51)}"
       style="font-size:${step1Fit(label,room,compact?11:14,600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(label)}</text>
     <text class="step1-battery-power" x="${textX}" y="${y+h-11}"

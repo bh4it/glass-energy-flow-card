@@ -25,6 +25,7 @@ Verbraucher – mit leuchtenden Stromflüssen, die Richtung und Leistung zeigen.
 - **9 Farbschemata**, hell und dunkel, drei Leitungs-Animationen
 - **Mitgelieferte Grafiken** für Haus, Netz, Speicher, PV und Haushaltsgeräte – direkt im Editor
   auswählbar, eigene Bilder per Upload
+- **Bildschirm wachhalten** auf Echo Show und Fire-Tablets – kein Fotorahmen-Modus mehr
 - **Deutsch und Englisch** – die Karte folgt automatisch der Sprache von Home Assistant
 - **Visueller Editor** – alles per Klick, kein YAML nötig
 - Dazu passend: die **Glass Energy Battery Card**
@@ -161,6 +162,19 @@ Im YAML: `image: builtin:<name>`, `image: none` (nur Symbol) oder eine Bild-URL.
 | `solar-roof`, `solar-balcony`, `solar-garage`, `solar-ground` | PV-Anlagen (Standard: `solar-roof`) |
 | `washer`, `dryer`, `dishwasher`, `pump`, `freezer` | Verbraucher |
 
+### 4. Bildschirm wachhalten (Echo Show, Fire-Tablets) *(optional)*
+
+Läuft das Dashboard auf einer Echo Show oder einem Fire-Tablet, springt das Gerät nach einer
+Weile in den Fotorahmen-Modus. Die Karte kann das verhindern: im Editor unter **Bildschirm
+wachhalten** *Nur Echo Show / Fire-Tablets* wählen (YAML: `keep_awake: fire_os`).
+
+- Wirkt, solange eine Ansicht mit der Karte geöffnet ist – ideal für eine eigene
+  **Panel**-Ansicht, die das Gerät dauerhaft zeigt.
+- Nach dem Laden einmal irgendwo auf den Bildschirm tippen; danach hält es auch Alexa-Timer,
+  Durchsagen und Anrufe aus.
+- `keep_awake: always` aktiviert es auf jedem Gerät (z. B. Wandtablet mit Android).
+- Zum Testen am PC: `?keepawake=force` an die Dashboard-URL hängen.
+
 ### Sprache
 
 Die Karte und ihr Editor sprechen Deutsch, wenn Home Assistant auf Deutsch eingestellt ist,
@@ -232,6 +246,7 @@ grid_options:
 | Bereich | Optionen |
 |---|---|
 | `title` | Überschrift der Karte |
+| `keep_awake` | `off` (Standard), `fire_os` (nur Echo Show / Fire-Tablets), `always` |
 | `header` | `real_import`, `real_export` (kWh), `temp`, `humidity`, `weather`, `uv` |
 | `pv` | `energy_today`, `forecast_today`, `forecast_remaining`, `forecast_tomorrow` |
 | `solar[]` | `name`, `entity` (W), `energy_today`, `icon`, `image`, `image_light` |

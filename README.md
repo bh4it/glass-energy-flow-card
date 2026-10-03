@@ -25,6 +25,7 @@ glowing power flows that show direction and power.
 - **9 colour schemes**, light and dark, three wire animations
 - **Built-in artwork** for house, grid, storage, PV and appliances – selectable right in the
   editor, plus your own uploads
+- **Keeps the screen awake** on Echo Show and Fire tablets – no more photo-frame mode
 - **English and German** – the card follows Home Assistant's language automatically
 - **Visual editor** – everything by clicking, no YAML needed
 - Matching companion: the **Glass Energy Battery Card**
@@ -160,6 +161,19 @@ In YAML: `image: builtin:<name>`, `image: none` (icon only) or an image URL.
 | `solar-roof`, `solar-balcony`, `solar-garage`, `solar-ground` | PV arrays (default: `solar-roof`) |
 | `washer`, `dryer`, `dishwasher`, `pump`, `freezer` | consumers |
 
+### 4. Keep the screen awake (Echo Show, Fire tablets) *(optional)*
+
+On an Echo Show or a Fire tablet the dashboard gives way to the photo-frame screen after a
+while. The card can prevent that: in the editor set **Keep screen awake** to *Echo Show / Fire
+tablets only* (YAML: `keep_awake: fire_os`).
+
+- Works while a view containing the card is open – ideal for a dedicated **Panel** view that
+  the device shows permanently.
+- Tap the screen once after loading; from then on it also survives Alexa timers,
+  announcements and calls.
+- `keep_awake: always` enables it on every device (e.g. an Android wall tablet).
+- To test on a PC: append `?keepawake=force` to the dashboard URL.
+
 ### Language
 
 The card and its editor speak German when Home Assistant is set to German, English otherwise.
@@ -231,6 +245,7 @@ grid_options:
 | Section | Options |
 |---|---|
 | `title` | card heading |
+| `keep_awake` | `off` (default), `fire_os` (Echo Show / Fire tablets only), `always` |
 | `header` | `real_import`, `real_export` (kWh), `temp`, `humidity`, `weather`, `uv` |
 | `pv` | `energy_today`, `forecast_today`, `forecast_remaining`, `forecast_tomorrow` |
 | `solar[]` | `name`, `entity` (W), `energy_today`, `icon`, `image`, `image_light` |

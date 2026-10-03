@@ -7,7 +7,7 @@
 
 Your home's entire energy flow in **one** animated glass-style card: several PV arrays with
 daily yield and forecast, storage, grid, house, climate and any number of consumers – with
-glowing power flows that show direction and power.
+electric car and glowing power flows that show direction and power.
 
 ![Glass Energy Flow Card – dark theme](docs/dark-en.png)
 
@@ -17,13 +17,15 @@ glowing power flows that show direction and power.
   (today / remaining / tomorrow)
 - **Storage** – several batteries with state of charge and charge/discharge power
 - **Grid** with import/export today, **house** with total consumption
+- **Electric car** – charge level and charging power at a glance, plug state, range, time to
+  full and up to six extra values; drawn artwork or your own photo
 - **Climate** – air conditioners/heat pumps with their own metrics (e.g. cooling/heating today)
-- **Consumers** – freely configurable, with colour, image and a second line (e.g. the car's
-  battery level at the wallbox or the water temperature at the immersion heater)
+- **Consumers** – freely configurable, with colour, image and a second line (e.g. the water
+  temperature at the immersion heater)
 - **Header** with metered import/export, temperature, humidity, weather and UV index
 - **Responsive**: wide, medium and narrow (phone) layouts, chosen automatically
 - **9 colour schemes**, light and dark, three wire animations
-- **Built-in artwork** for house, grid, storage, PV and appliances – selectable right in the
+- **Built-in artwork** for house, grid, storage, PV, electric car and appliances – selectable right in the
   editor, plus your own uploads
 - **Keeps the screen awake** on Echo Show and Fire tablets – no more photo-frame mode
 - **English and German** – the card follows Home Assistant's language automatically
@@ -121,6 +123,7 @@ The card only shows what you give it. Typically you need:
 | Storage | state of charge and power: **negative = charging, positive = discharging** | % / W |
 | House | total house consumption | W |
 | Consumers | power, e.g. from smart plugs | W |
+| Electric car *(optional)* | charge level, charging power (wallbox); optionally plug state, range, time to full | % / W |
 
 If a sensor has the opposite sign, enable **Invert sign** for grid or storage (`invert: true`).
 Where the sensors can come from is described under [Data sources](#data-sources).
@@ -130,14 +133,14 @@ Where the sensors can come from is described under [Data sources](#data-sources)
 1. Open the dashboard → **Edit** → **Add card**.
 2. Search for **Glass Energy Flow Card**.
 3. Fill in the sections in the editor: PV sources, PV yield & forecast, storage, grid, house,
-   climate, consumers, header, colours.
+   EV, climate, consumers, header, colours.
 
 Tip: the card looks best at full width – in a **Sections** view spanning the whole width, or as
 a **Panel** view.
 
 ### 3. Choose images
 
-House, grid, storage and PV arrays show the built-in artwork without any setting. In the editor
+House, grid, storage, PV arrays and the electric car show the built-in artwork without any setting. In the editor
 every entry has an image field:
 
 ![Image picker in the editor](docs/editor-en.png)
@@ -160,8 +163,31 @@ In YAML: `image: builtin:<name>`, `image: none` (icon only) or an image URL.
 | `battery`, `battery-stack` | storage (default: `battery`) |
 | `solar-roof`, `solar-balcony`, `solar-garage`, `solar-ground` | PV arrays (default: `solar-roof`) |
 | `washer`, `dryer`, `dishwasher`, `pump`, `freezer` | consumers |
+| `ev-plugged`, `ev` | electric car (default: switches with the plug state) |
 
-### 4. Keep the screen awake (Echo Show, Fire tablets) *(optional)*
+### 4. Electric car *(optional)*
+
+The **EV** section shows your car at the top right, above the climate group: charge level and
+charging power as the two big figures, plus status, remaining charging time, range and a charge
+bar with the target level. The drawn car stands at the charging pillar with the cable plugged in
+while connected, and with the cable coiled up otherwise.
+
+![EV section: charging and not plugged in](docs/ev-en.png)
+
+- **Charge level** (`soc`, %) and **charging power** (`power`, W – ideally the wallbox's power, so
+  it matches the flow into the car) are all you need.
+- **Plug state** *(optional)*: any entity that says whether the cable is connected, e.g.
+  `Connected`, `plugged_in`, `on` or `charging`. Without it the car counts as plugged in while it
+  is charging.
+- **Range**, **time to full** (minutes) and **target charge level** *(optional)*.
+- **Extra values** *(optional)*: up to six more entities – e.g. days or kilometres to the next
+  service, odometer – appear in a quiet icon row. Numbers are shown with the sensor's unit; tap one
+  for its details.
+- **Your own photo:** upload a picture of your car or enter its URL in the image field. It fills
+  the area with rounded corners (*Own photo → Show completely* fits it instead). While plugged in a
+  plug badge shows the connection – or add a second photo for that state (`image_plugged`).
+
+### 5. Keep the screen awake (Echo Show, Fire tablets) *(optional)*
 
 On an Echo Show or a Fire tablet the dashboard gives way to the photo-frame screen after a
 while. The card can prevent that: in the editor set **Keep screen awake** to *Echo Show / Fire
@@ -223,14 +249,20 @@ climate:
       - label: Today
         entity: sensor.ac_energy_today
         unit: kWh
+vehicles:
+  - name: My EV
+    soc: sensor.car_battery_level
+    power: sensor.wallbox_power
+    plug: sensor.car_charger_connection
+    range: sensor.car_range
+    time_to_full: sensor.car_time_to_full
+    target_soc: sensor.car_charge_target
+    metrics:
+      - entity: sensor.car_days_to_service
+        icon: mdi:wrench-clock
+      - entity: sensor.car_odometer
+        icon: mdi:counter
 consumers:
-  - name: Wallbox
-    entity: sensor.wallbox_power
-    icon: mdi:ev-station
-    color: "#a78bfa"
-    secondary:
-      entity: sensor.car_battery_level
-      unit: "%"
   - name: Washer
     entity: sensor.washer_power
     image: builtin:washer
@@ -252,6 +284,7 @@ grid_options:
 | `batteries[]` | `name`, `soc` (%), `power` (W), `invert`, `icon`, `image`, `image_light` |
 | `grid` | `entity` (W), `invert`, `import_today`, `export_today`, `name`, `icon`, `image`, `image_light` |
 | `home` | `entity` (W), `icon`, `image`, `image_light` |
+| `vehicles[]` | `name`, `soc` (%), `power` (W), `plug`, `range` (km), `time_to_full` (min), `target_soc`, `threshold` (W, default 50), `invert`, `icon`, `image`, `image_plugged`, `image_fit` (`cover`/`contain`), `metrics[]` (`entity`, `icon`, `unit`; up to 6) |
 | `climate[]` | `name`, `entity` (W), `state_entity`, `icon`, `image`, `metrics[]` (`label`, `entity`, `unit`) |
 | `consumers[]` | `name`, `entity`, `unit`, `icon`, `color`, `image`, `hidden`, `secondary` (`entity`, `label`, `unit`) |
 | `layout` | `mode`: `auto` (default), `wide`, `mid`, `narrow`; breakpoints `wide_min` (1100 px), `mid_min` (680 px) |

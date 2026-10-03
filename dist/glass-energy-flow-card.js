@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.2.0";
+  const CARD_VERSION = "1.3.0";
 
   // ------------------------------------------------------------------ i18n
   // The UI follows Home Assistant's language: German for "de", English
@@ -66,6 +66,14 @@
     "Kopfzeile": "Header",
     "Farben": "Colours",
     "Bereiche": "Sections",
+    "E-AUTO": "EV", "E-Auto": "EV", "Auto": "Car", "Verbunden": "Plugged in",
+    "Nicht verbunden": "Not plugged in", "Voll": "Full", "Ladeleistung (W)": "Charging power (W)",
+    "Stecker / Verbindung (optional)": "Plug / connection (optional)",
+    "Reichweite in km (optional)": "Range in km (optional)",
+    "Restzeit bis voll in Minuten (optional)": "Time to full in minutes (optional)",
+    "Ziel-Ladestand (optional)": "Target charge level (optional)",
+    "Lädt ab … W (Standard 50)": "Charging from … W (default 50)",
+    "Vorzeichen umkehren (Ladeleistung negativ)": "Invert sign (charging power negative)",
     "Bildschirm wachhalten": "Keep screen awake", "Aus": "Off",
     "Nur Echo Show / Fire-Tablets (empfohlen)": "Echo Show / Fire tablets only (recommended)",
     "Auf allen Geräten": "On all devices",
@@ -127,6 +135,18 @@
     "Vorzeichen umkehren (negativ = lädt)": "Invert sign (negative = charging)",
     "Status-Entität (optional)": "State entity (optional)",
     "Standby bis … W ausblenden (Standard 5)": "Hide standby up to … W (default 5)",
+    "Optionales eigenes Foto im eingesteckten Zustand (sonst zeigt ein Stecker-Symbol die Verbindung)": "Optional own photo while plugged in (otherwise a plug symbol shows the connection)",
+    "Eigenes Foto": "Own photo",
+    "Fläche füllen": "Fill the area",
+    "Ganz zeigen": "Show completely",
+    "Zusatzwert 1": "Extra value 1",
+    "Zusatzwert 2": "Extra value 2",
+    "Zusatzwert 3": "Extra value 3",
+    "Zusatzwert 4": "Extra value 4",
+    "Zusatzwert 5": "Extra value 5",
+    "Zusatzwert 6": "Extra value 6",
+    "Symbol (optional)": "Icon (optional)",
+    "Einheit (optional, sonst vom Sensor)": "Unit (optional, otherwise from the sensor)",
     "Kennzahl 1": "Metric 1",
     "Kennzahl 2": "Metric 2",
     "Entität": "Entity",
@@ -211,6 +231,20 @@
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
+  // Any entity as short text: numbers localised with their unit ("10.746 km",
+  // "417 d"), everything else as Home Assistant itself would show it.
+  const fmtEntity = (hass, m) => {
+    const st = hass.states[m.entity];
+    if (!st || st.state === "unknown" || st.state === "unavailable") return "–";
+    const n = Number(st.state);
+    if (st.state === "" || !Number.isFinite(n)) {
+      return typeof hass.formatEntityState === "function" ? hass.formatEntityState(st) : st.state;
+    }
+    const unit = m.unit || st.attributes.unit_of_measurement || "";
+    const text = new Intl.NumberFormat(LANG === "de" ? "de-DE" : "en-US",
+      { maximumFractionDigits: Math.abs(n) >= 100 ? 0 : 1 }).format(n);
+    return unit ? `${text} ${unit}` : text;
+  };
   const fmtBy = (unit, v) => {
     switch (unit) {
       case "kWh": return fmtKWh(v);
@@ -385,6 +419,7 @@
     cfg.grid = cfg.grid || {};
     cfg.home = cfg.home || {};
     cfg.climate = (cfg.climate || []).filter((x) => x && (x.entity || x.state_entity));
+    cfg.vehicles = (cfg.vehicles || []).filter((x) => x && (x.soc || x.power));
     cfg.consumers = (cfg.consumers || []).filter((x) => x && x.entity);
     return cfg;
   }
@@ -775,26 +810,41 @@
     const vis = d.consumers;
     const nRight = clamp(split?.right ?? Math.min(P.rightMax, vis.length), 0, vis.length);
     const tileX = climX + Math.round((climW - tileW) / 2);
-    const trunkX = Math.round(Math.max(climX - lane / 2 - 6,
-      pvNode ? (pvNode.x + pvNode.w + climX) / 2 : 0));
     const stubs = [];
 
-    let rightY = pad;
+    let rightY = pad, rightEdgeX = climX;
+    // ---- electric vehicles, top right above the climate group -----------
+    // Wider than the column when the PV band leaves room, so the car stays legible.
+    if (d.vehicles.length) {
+      const room = vbw - pad - (pvNode ? pvNode.x + pvNode.w : leftX + leftW) - lane - 14;
+      const evW = Math.round(clamp(room, climW, 280));
+      const evX = vbw - pad - evW;
+      const vehH = vehicleArtH(d.vehicles, evW - 34) + 104 + vehicleExtraH(d.vehicles, evW - 18);
+      const evH = 42 + d.vehicles.length * (vehH + 10) - 10 + 12;
+      nodes.push({ t: "vehicles", x: evX, y: rightY, w: evW, h: evH, vehH });
+      d.vehicles.forEach((v, i) => {
+        stubs.push({ y: rightY + 42 + i * (vehH + 10) + vehH / 2, x: evX, ref: ["vehicles", i] });
+      });
+      rightEdgeX = Math.min(climX, evX);
+      rightY += evH + 16;
+    }
     if (d.climate.length) {
       const cellH = 80;
       const climH = 42 + d.climate.length * (cellH + 10) - 10 + 10;
-      nodes.push({ t: "climate", x: climX, y: pad, w: climW, h: climH, cellH });
+      nodes.push({ t: "climate", x: climX, y: rightY, w: climW, h: climH, cellH });
       d.climate.forEach((c, i) => {
-        stubs.push({ y: pad + 42 + i * (cellH + 10) + cellH / 2, x: climX, ref: ["climate", i] });
+        stubs.push({ y: rightY + 42 + i * (cellH + 10) + cellH / 2, x: climX, ref: ["climate", i] });
       });
-      rightY = pad + climH + 16;
+      rightY += climH + 16;
     }
+    const trunkX = Math.round(Math.max(rightEdgeX - lane / 2 - 6,
+      pvNode ? (pvNode.x + pvNode.w + rightEdgeX) / 2 : 0));
     for (let i = 0; i < nRight; i++) {
       const y = rightY + i * (tileH + gap);
       nodes.push({ t: "load", i, x: tileX, y, w: tileW, h: tileH });
       stubs.push({ y: y + tileH / 2, x: tileX, ref: ["consumers", i] });
     }
-    const rightBottom = nRight ? rightY + nRight * (tileH + gap) - gap : (d.climate.length ? rightY - 16 : pad);
+    const rightBottom = nRight ? rightY + nRight * (tileH + gap) - gap : (rightY > pad ? rightY - 16 : pad);
 
     if (stubs.length) {
       distribution.right = { x: trunkX, targets: stubs };
@@ -976,6 +1026,16 @@
         vbh = y + tileH + pad;
       }
     }
+    // Vehicles hang off the same feed as the tiles, one full-width panel each.
+    d.vehicles.forEach((v, i) => {
+      const h = (vehiclePhoto(v) ? vehicleArtH([v], vbw - 2 * pad - 16) + 96 : P.vehStackH || 210)
+        + vehicleExtraH([v], vbw - 2 * pad);
+      const bY = distribution.rows.length ? vbh - pad + gap : rowBottom + lane;
+      const y = bY + 22;
+      nodes.push({ t: "vehicle", i, x: pad, y, w: vbw - 2 * pad, h });
+      distribution.rows.push({ y: bY, targets: [{ x: centerX, y, left: pad, width: vbw - 2 * pad, ref: ["vehicles", i] }] });
+      vbh = y + h + pad;
+    });
     return { vbw, vbh: Math.round(vbh), nodes, links, centerX, houseY, distribution };
   }
 
@@ -1339,6 +1399,8 @@
     .dash.rev { animation-name:dashrev; }
     @keyframes dashrev { from { stroke-dashoffset:var(--fo,0px); } to { stroke-dashoffset:calc(18px + var(--fo,0px)); } }
     .flow-hidden { visibility:hidden; }
+    .ev-badge { fill:var(--sc-panel, rgba(16,28,52,.9)); stroke-width:2; }
+    .ev-photo-frame { fill:none; stroke:var(--sc-bar-bg); stroke-width:1.5; }
     .wire-steady { stroke-width:3; opacity:.8; }
     .center { filter: var(--sc-center-glow, drop-shadow(0 0 16px rgba(0,170,255,.35))); }
     .socbar-bg { fill: var(--sc-bar-bg); }
@@ -1421,7 +1483,7 @@
   // this module, switching to <name>-light.png in the light scheme where one exists.
   // `image: none` forces the icon.
   const BUILTIN_BASE = new URL("./", import.meta.url).href;
-  const BUILTIN_LIGHT = new Set(["home", "grid", "battery", "battery-stack",
+  const BUILTIN_LIGHT = new Set(["home", "grid", "battery", "battery-stack", "ev", "ev-plugged",
     "solar-roof", "solar-balcony", "solar-garage", "solar-ground"]);
   const resolveImage = (img) => {
     if (!img || img === "none") return null;
@@ -1694,6 +1756,102 @@ function step1Battery(x,y,w,h,b,compact) {
 
   function batterySvg(x,y,w,h,b,compact) { return step1Battery(x,y,w,h,b,compact); }
 
+  const fmtDuration = (min) => {
+    if (min == null || min <= 0) return null;
+    const m = Math.round(min);
+    return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")} h`;
+  };
+
+  // Extra values of a vehicle (service, odometer, …) sit in a quiet icon row;
+  // the row wraps when the panel is too narrow for all of them.
+  const vehicleMetricRows = (v, w) => {
+    const n = (v.metricValues || []).length;
+    return n ? Math.ceil(n / Math.max(1, Math.min(n, Math.floor((w - 16) / 56)))) : 0;
+  };
+  const vehicleExtraH = (vehicles, w) => Math.max(0, ...vehicles.map((v) => vehicleMetricRows(v, w) * 40));
+  // Own photos are shown as a rounded, filled picture, which needs a taller box
+  // than the wide drawn artwork.
+  const vehiclePhoto = (v) => !!v.image && v.image !== "none" && !String(v.image).startsWith("builtin:");
+  const vehicleArtH = (vehicles, artW) =>
+    Math.round(artW / (vehicles.some(vehiclePhoto) ? 1.9 : 3.5));
+  let photoSeq = 0;
+
+  /**
+   * One vehicle: the car (at the charging pillar while plugged in, with the
+   * cable coiled up otherwise) across the top; charge level and charging power
+   * as the two big values underneath, then name/status, the optional icon row
+   * and the charge bar along the bottom. Custom photos get a plug badge
+   * instead of the drawn pillar, so the connection state stays visible.
+   */
+  function vehicleSvg(x, y, w, h, v, compact) {
+    const level = v.socValue == null ? 0 : clamp(v.socValue, 0, 100);
+    const accent = v.charging ? "#22e6a4" : level <= 15 ? "#ff5d6c" : "#37c8ff";
+    const green = inkify("#22e6a4", LIGHT);
+    const full = v.plugged && !v.charging && v.socValue != null
+      && level >= (v.targetSoc ?? 100) - 1;
+    const status = T(v.charging ? "Lädt" : full ? "Voll" : v.plugged ? "Verbunden" : "Nicht verbunden");
+    const custom = vehiclePhoto(v);
+    const image = custom ? (v.plugged && v.image_plugged ? v.image_plugged : v.image)
+      : v.image === "none" ? "none"
+      : v.image ? v.image
+      : v.plugged ? "builtin:ev-plugged" : "builtin:ev";
+    const big = compact ? 30 : 28, kpi = compact ? 20 : 18, mid = 13, small = 12;
+    const metrics = v.metricValues || [];
+    const mRows = vehicleMetricRows(v, w);
+    const textTop = y + h - 20 - mRows * 40 - 62;
+    const artX = x + 8, artY = y + 8, artW = w - 16, artH = textTop - artY - 6;
+    const soc = v.socValue == null ? "–" : Math.round(level) + " %";
+    const dur = v.charging ? fmtDuration(v.timeToFull) : null;
+    const range = v.rangeValue != null ? `${Math.round(v.rangeValue)} km` : "";
+    const lx = x + 12, rx = x + w - 12, half = (w - 24) / 2;
+    const barX = x + 10, barW = w - 20, barY = y + h - 12;
+    let badge = "";
+    if (custom && v.plugged && !v.image_plugged) {
+      const bx = artX + artW - 18, by = artY + artH - 16;
+      badge = `<g${v.charging ? ' class="pulse"' : ""}><circle cx="${bx}" cy="${by}" r="14" class="ev-badge"
+        style="stroke:${inkify(accent, LIGHT)}"/>${icon(bx - 10, by - 10, 20, "mdi:ev-plug-type-2", accent, accent + "aa")}</g>`;
+    }
+    // the two key figures: charge level left, charging power (or status) right
+    const right1 = v.charging ? fmtW(v.powerValue) : status;
+    const right2 = v.charging ? [status, dur].filter(Boolean).join(" · ") : "";
+    let row = "";
+    if (metrics.length) {
+      const cols = Math.ceil(metrics.length / mRows), cw = (w - 16) / cols, mTop = textTop + 66;
+      row = metrics.map((m, j) => {
+        const cx = x + 8 + cw * ((j % cols) + 0.5), iy = mTop + Math.floor(j / cols) * 40;
+        return `<g class="clickable" data-entity="${esc(m.entity)}">
+          <rect x="${(cx - cw / 2).toFixed(1)}" y="${iy - 2}" width="${cw.toFixed(1)}" height="38" fill="transparent"/>
+          ${icon(cx - 8, iy, 16, m.icon, "#37c8ff")}
+          <text x="${cx.toFixed(1)}" y="${iy + 30}" text-anchor="middle"
+            style="font-size:${step1Fit(m.text, cw - 4, small, 600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(m.text)}</text></g>`;
+      }).join("");
+    }
+    return `<g class="ev clickable" data-entity="${esc(v.soc || v.power)}">
+      <rect class="glass" x="${x}" y="${y}" width="${w}" height="${h}" rx="14"/>
+      ${custom ? (() => {
+        const id = "ev-photo-" + (++photoSeq), fit = v.image_fit === "contain" ? "meet" : "slice";
+        return `<clipPath id="${id}"><rect x="${artX}" y="${artY}" width="${artW}" height="${artH}" rx="10"/></clipPath>
+        <image href="${esc(image)}" x="${artX}" y="${artY}" width="${artW}" height="${artH}"
+          preserveAspectRatio="xMidYMid ${fit}" clip-path="url(#${id})"/>
+        <rect class="ev-photo-frame" x="${artX}" y="${artY}" width="${artW}" height="${artH}" rx="10"/>`;
+      })() : artwork(artX, artY, artH, image, v.icon || "mdi:car-electric", accent, undefined, artW)}${badge}
+      <text class="ev-soc" x="${lx}" y="${textTop + 24}"
+        style="font-size:${step1Fit(soc, half, big, 700)}px;font-weight:700">${esc(soc)}</text>
+      <text x="${rx}" y="${textTop + 24}" text-anchor="end"
+        style="font-size:${step1Fit(right1, half + 6, v.charging ? kpi : 14, 700)}px;font-weight:700;fill:${v.charging ? green : "currentColor"}">${esc(right1)}</text>
+      <text x="${lx}" y="${textTop + 44}"
+        style="font-size:${step1Fit(v.name || "", half, mid, 600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(v.name || "")}</text>
+      ${right2 ? `<text x="${rx}" y="${textTop + 44}" text-anchor="end"
+        style="font-size:${step1Fit(right2, half + 6, mid, 650)}px;font-weight:650;fill:${green}">${esc(right2)}</text>` : ""}
+      ${range ? `<text x="${lx}" y="${textTop + 60}"
+        style="font-size:${step1Fit(range, w - 24, small, 600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(range)}</text>` : ""}
+      ${row}
+      <rect class="socbar-bg" x="${barX}" y="${barY}" width="${barW}" height="5" rx="2.5"/>
+      <rect x="${barX}" y="${barY}" width="${(barW * level / 100).toFixed(1)}" height="5" rx="2.5" fill="${inkify(accent, LIGHT)}"/>
+      ${v.targetSoc != null ? `<rect x="${(barX + barW * clamp(v.targetSoc, 0, 100) / 100 - 1).toFixed(1)}" y="${barY - 3}" width="2" height="11" rx="1" fill="var(--sc-ink-soft)"/>` : ""}
+    </g>`;
+  }
+
   // ------------------------------------------------------------------- card
   class GlassEnergyFlowCard extends HTMLElement {
     setConfig(config) {
@@ -1934,6 +2092,25 @@ function step1Battery(x,y,w,h,b,compact) {
                    ? `${x.secondary.label || ""} ${fmtBy(x.secondary.unit || "W", num(hass, x.secondary.entity))}`.trim()
                    : null };
       }).filter((x) => !x.hideZero);
+      const vehicles = c.vehicles.map((v) => {
+        const p = num(hass, v.power);
+        const pw = p == null ? null : p * (v.invert ? -1 : 1);
+        const charging = pw != null && pw > (v.threshold ?? 50);
+        const ps = v.plug ? hass.states[v.plug] : null;
+        const s = ps ? String(ps.state).toLowerCase() : "";
+        // Integrations disagree on wording ("Connected", "plugged_in", "on",
+        // "charging", "EV Disconnected", …), so negatives are ruled out first.
+        const plugged = ps
+          ? !/(disconnect|unplug|not[_ ]?connected|^off$|^false$|^unavailable$|^unknown$|^none$)/.test(s)
+            && /(^on$|^true$|connect|plug|charg|ready|wait|full|complete|finish|paus)/.test(s)
+          : charging;
+        return { ...v, socValue: num(hass, v.soc), powerValue: pw, charging, active: charging,
+                 plugged: plugged || charging, rangeValue: num(hass, v.range),
+                 timeToFull: num(hass, v.time_to_full), targetSoc: num(hass, v.target_soc),
+                 metricValues: (v.metrics || []).filter((m) => m && m.entity).map((m) => ({
+                   entity: m.entity, text: fmtEntity(hass, m),
+                   icon: m.icon || hass.states[m.entity]?.attributes.icon || "mdi:information-outline" })) };
+      });
       const stackTiles = climate.map((cl) => ({
         kind: "climate", name: cl.name, icon: cl.icon || "mdi:air-conditioner", color: "#7dd3fc",
         text: cl.value == null ? (cl.stateText || "–") : fmtW(cl.value), active: cl.active,
@@ -1941,7 +2118,7 @@ function step1Battery(x,y,w,h,b,compact) {
         secondaryText: cl.metricValues.length ? `${cl.metricValues[0].label} ${fmtBy(cl.metricValues[0].unit || "kWh", cl.metricValues[0].value)}` : null,
       })).concat(consumers.map((x) => ({ kind: "load", ...x })));
       return {
-        solar, pvTotal, pvEnergy, pvForecast, batteries, climate, consumers, stackTiles,
+        solar, pvTotal, pvEnergy, pvForecast, batteries, climate, consumers, stackTiles, vehicles,
         grid: c.grid, gridValue, gridDisplayValue: this._sampleGridDisplay(gridValue),
         gridImport: gridValue != null && gridValue > 5,
         gridExport: gridValue != null && gridValue < -5,
@@ -1991,6 +2168,7 @@ function step1Battery(x,y,w,h,b,compact) {
 
       // Layout + routing only need to run when the structure or shape changes.
       const sig = [mode, d.solar.length, d.batteries.length, d.climate.length,
+                   d.vehicles.map(v => (v.soc || v.power) + "/" + v.metricValues.length).join(","),
                    d.consumers.map(c => c.entity).join(","),
                    d.climate.map(c => c.entity || c.state_entity).join(","),
                    d.grid.entity ? 1 : 0,
@@ -2117,6 +2295,14 @@ function step1Battery(x,y,w,h,b,compact) {
             <text class="group-title" x="${n.x + 39}" y="${n.y + 25}">${T("SPEICHER")}</text></g>${inner}`;
         }
         case "battery": return batterySvg(n.x, n.y, n.w, n.h, d.batteries[n.i], true);
+        case "vehicles": {
+          const inner = d.vehicles.map((v, i) =>
+            vehicleSvg(n.x + 9, n.y + 42 + i * (n.vehH + 10), n.w - 18, n.vehH, v, false)).join("");
+          return `<g class="pulse"><rect class="group-frame" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="18"/>
+            ${icon(n.x + 12, n.y + 9, 20, "mdi:car-electric", "#60a5fa", "rgba(96,165,250,.7)")}
+            <text class="group-title" x="${n.x + 39}" y="${n.y + 25}">${T("E-AUTO")}</text></g>${inner}`;
+        }
+        case "vehicle": return d.vehicles[n.i] ? vehicleSvg(n.x, n.y, n.w, n.h, d.vehicles[n.i], true) : "";
         case "climate": return this._climateGroup(n, d);
         case "load": {
           const l = d.consumers[n.i];
@@ -2622,6 +2808,26 @@ function step1Battery(x,y,w,h,b,compact) {
       ] },
       { name: "invert", label: "Vorzeichen umkehren (negativ = lädt)", selector: SEL.bool },
     ],
+    vehicleItem: [
+      { type: "grid", column_min_width: "220px", schema: [
+        { name: "soc", label: "Ladestand (%)", selector: SEL.power },
+        { name: "power", label: "Ladeleistung (W)", selector: SEL.power },
+        { name: "name", label: "Name", selector: SEL.text },
+        { name: "icon", label: "Symbol", selector: SEL.icon },
+      ] },
+      { name: "plug", label: "Stecker / Verbindung (optional)", selector: SEL.anyEntity },
+      { type: "grid", column_min_width: "220px", schema: [
+        { name: "range", label: "Reichweite in km (optional)", selector: SEL.power },
+        { name: "time_to_full", label: "Restzeit bis voll in Minuten (optional)", selector: SEL.power },
+        { name: "target_soc", label: "Ziel-Ladestand (optional)", selector: SEL.anyEntity },
+        { name: "threshold", label: "Lädt ab … W (Standard 50)", selector: SEL.num(0, 5000, 1) },
+      ] },
+      { type: "grid", column_min_width: "220px", schema: [
+        { name: "invert", label: "Vorzeichen umkehren (Ladeleistung negativ)", selector: SEL.bool },
+        { name: "image_fit", label: "Eigenes Foto", selector: { select: { mode: "dropdown", options: [
+          { value: "cover", label: "Fläche füllen" }, { value: "contain", label: "Ganz zeigen" }] } } },
+      ] },
+    ],
     climateItem: [
       { name: "entity", label: "Leistungssensor", selector: SEL.power },
       { type: "grid", column_min_width: "220px", schema: [
@@ -2665,22 +2871,36 @@ function step1Battery(x,y,w,h,b,compact) {
   };
 
   SCHEMA.climateItem = SCHEMA.climateItem.concat([SCHEMA._metric(1), SCHEMA._metric(2)]);
+  SCHEMA._vehicleValue = (n) => ({
+    title: "Zusatzwert " + n, name: "metric_" + n, type: "expandable", schema: [
+      { type: "grid", column_min_width: "200px", schema: [
+        { name: "entity", label: "Entität", selector: SEL.anyEntity },
+        { name: "icon", label: "Symbol (optional)", selector: SEL.icon },
+        { name: "unit", label: "Einheit (optional, sonst vom Sensor)", selector: SEL.text },
+      ] },
+    ],
+  });
+  const VEHICLE_VALUES = 6;
+  SCHEMA.vehicleItem = SCHEMA.vehicleItem.concat(
+    Array.from({ length: VEHICLE_VALUES }, (_, i) => SCHEMA._vehicleValue(i + 1)));
 
-  // climate metrics are stored as an array but edited as two fixed slots
-  const climateToForm = (x) => {
+  // Metrics are stored as an array but edited as fixed slots
+  // (climate: two labelled figures, vehicles: the icon row).
+  const METRIC_SLOTS = { climate: 2, vehicles: VEHICLE_VALUES };
+  const metricsToForm = (x, n) => {
     const o = { ...x };
-    (x.metrics || []).slice(0, 2).forEach((m, i) => { o["metric_" + (i + 1)] = { ...m }; });
+    (x.metrics || []).slice(0, n).forEach((m, i) => { o["metric_" + (i + 1)] = { ...m }; });
     delete o.metrics;
     return o;
   };
-  const climateFromForm = (o) => {
+  const metricsFromForm = (o, n) => {
     const x = { ...o };
     const ms = [];
-    [1, 2].forEach((i) => {
+    for (let i = 1; i <= n; i++) {
       const m = x["metric_" + i];
       delete x["metric_" + i];
       if (m && m.entity) ms.push(m);
-    });
+    }
     if (ms.length) x.metrics = ms; else delete x.metrics;
     return x;
   };
@@ -2692,6 +2912,7 @@ function step1Battery(x,y,w,h,b,compact) {
     { id: "batteries", title: "Speicher",    icon: "mdi:battery-high",          list: true, item: "batteryItem",  label: (x, h) => x.name || fname(h, x.soc || x.power) },
     { id: "grid",      title: "Netz",        icon: "mdi:transmission-tower",    schema: "grid" },
     { id: "home",      title: "Haus",        icon: "mdi:home-lightning-bolt",   schema: "home" },
+    { id: "vehicles",  title: "E-Auto",      icon: "mdi:car-electric",          list: true, item: "vehicleItem",  label: (x, h) => x.name || fname(h, x.soc || x.power) },
     { id: "climate",   title: "Klima",       icon: "mdi:snowflake-thermometer", list: true, item: "climateItem",  label: (x, h) => x.name || fname(h, x.entity), metrics: true },
     { id: "consumers", title: "Verbraucher", icon: "mdi:power-plug",            list: true, item: "consumerItem", label: (x, h) => x.name || fname(h, x.entity) },
     { id: "header",    title: "Kopfzeile",   icon: "mdi:card-text-outline",     schema: "header" },
@@ -2723,6 +2944,7 @@ function step1Battery(x,y,w,h,b,compact) {
     home: { choices: ["home"], fallback: "builtin:home" },
     consumers: { choices: ["washer", "dryer", "dishwasher", "pump", "freezer"] },
     climate: {},
+    vehicles: { fallback: "builtin:ev" },
   };
 
   const MAX_UPLOAD = 4 * 1024 * 1024;   // 4 MB
@@ -3263,10 +3485,14 @@ function step1Battery(x,y,w,h,b,compact) {
       if (!item) { this._nav(page.id); return; }
       const i = this._index;
       const cur = () => this._config[page.id][i] || {};
+      const slots = METRIC_SLOTS[page.id];
       root.appendChild(this._form(SCHEMA[page.item],
-        () => (page.id === "climate" ? climateToForm(cur()) : { ...cur() }), (v) => {
-        const next = page.id === "climate" ? climateFromForm(v) : v;
-        this._patch((n) => { n[page.id][i] = { ...n[page.id][i], ...next }; });
+        () => (slots ? metricsToForm(cur(), slots) : { ...cur() }), (v) => {
+        const next = slots ? metricsFromForm(v, slots) : v;
+        this._patch((n) => {
+          n[page.id][i] = { ...n[page.id][i], ...next };
+          if (slots && !next.metrics) delete n[page.id][i].metrics;
+        });
       }));
       root.appendChild(this._imageField(
         () => (this._config[page.id][i] || {}).image,
@@ -3283,6 +3509,16 @@ function step1Battery(x,y,w,h,b,compact) {
         root.appendChild(this._imageField(
           () => this._config[page.id][i].image_light,
           url => this._patch(n => { if (url) n[page.id][i].image_light = url; else delete n[page.id][i].image_light; }),
+          item.icon || page.icon, { light: true }));
+      }
+      if (page.id === "vehicles") {
+        const hint = document.createElement("div");
+        hint.className = "hint";
+        hint.textContent = T("Optionales eigenes Foto im eingesteckten Zustand (sonst zeigt ein Stecker-Symbol die Verbindung)");
+        root.appendChild(hint);
+        root.appendChild(this._imageField(
+          () => this._config[page.id][i].image_plugged,
+          url => this._patch(n => { if (url) n[page.id][i].image_plugged = url; else delete n[page.id][i].image_plugged; }),
           item.icon || page.icon, { light: true }));
       }
     }
@@ -3365,6 +3601,7 @@ function step1Battery(x,y,w,h,b,compact) {
         case "solar": return { entity, name: clean || "PV", icon: "mdi:solar-panel" };
         case "batteries": return { soc: entity, name: clean || T("Speicher"), icon: "mdi:battery-high" };
         case "climate": return { entity, name: clean || T("Klima"), icon: "mdi:air-conditioner" };
+        case "vehicles": return { soc: entity, name: clean || T("Auto"), icon: "mdi:car-electric" };
         default: return { entity, name: clean || entity, icon: "mdi:power-plug", color: "#7fd4ff", unit: "W" };
       }
     }

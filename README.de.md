@@ -7,7 +7,7 @@
 
 Der komplette Energiefluss deines Hauses in **einer** animierten Karte im Glas-Look:
 mehrere PV-Anlagen mit Tagesertrag und Prognose, Speicher, Netz, Haus, Klima und beliebig viele
-Verbraucher – mit leuchtenden Stromflüssen, die Richtung und Leistung zeigen.
+Verbraucher und ein E-Auto – mit leuchtenden Stromflüssen, die Richtung und Leistung zeigen.
 
 ![Glass Energy Flow Card – dunkles Design](docs/dark-de.png)
 
@@ -17,13 +17,15 @@ Verbraucher – mit leuchtenden Stromflüssen, die Richtung und Leistung zeigen.
   (Heute / Rest / Morgen)
 - **Speicher** – mehrere Batterien mit Ladestand und Lade-/Entladeleistung
 - **Netz** mit Bezug/Einspeisung heute, **Haus** mit Gesamtverbrauch
+- **E-Auto** – Ladestand und Ladeleistung auf einen Blick, Steckerstatus, Reichweite, Restzeit
+  und bis zu sechs Zusatzwerte; gezeichnete Grafik oder eigenes Foto
 - **Klima** – Klimaanlagen/Wärmepumpen mit eigenen Kennzahlen (z. B. Kühlen/Heizen heute)
-- **Verbraucher** – frei konfigurierbar, mit Farbe, Bild und zweiter Zeile (z. B. Akkustand des
-  Autos an der Wallbox oder Wassertemperatur am Heizstab)
+- **Verbraucher** – frei konfigurierbar, mit Farbe, Bild und zweiter Zeile (z. B.
+  Wassertemperatur am Heizstab)
 - **Kopfzeile** mit realem Bezug/Einspeisung, Temperatur, Luftfeuchte, Wetter und UV-Index
 - **Responsiv**: breites, mittleres und schmales Layout (Handy) automatisch
 - **9 Farbschemata**, hell und dunkel, drei Leitungs-Animationen
-- **Mitgelieferte Grafiken** für Haus, Netz, Speicher, PV und Haushaltsgeräte – direkt im Editor
+- **Mitgelieferte Grafiken** für Haus, Netz, Speicher, PV, E-Auto und Haushaltsgeräte – direkt im Editor
   auswählbar, eigene Bilder per Upload
 - **Bildschirm wachhalten** auf Echo Show und Fire-Tablets – kein Fotorahmen-Modus mehr
 - **Deutsch und Englisch** – die Karte folgt automatisch der Sprache von Home Assistant
@@ -120,6 +122,7 @@ Die Karte zeigt nur an, was du ihr gibst. Typischerweise brauchst du:
 | Speicher | Ladestand und Leistung: **negativ = laden, positiv = entladen** | % / W |
 | Haus | Gesamtverbrauch des Hauses | W |
 | Verbraucher | Leistung, z. B. von Zwischensteckern | W |
+| E-Auto *(optional)* | Ladestand, Ladeleistung (Wallbox); optional Steckerstatus, Reichweite, Restzeit | % / W |
 
 Hat ein Sensor das umgekehrte Vorzeichen, aktiviere bei Netz bzw. Speicher **Vorzeichen
 umkehren** (`invert: true`).
@@ -131,14 +134,14 @@ Woher die Sensoren kommen können, steht unter [Datenquellen](#datenquellen).
 1. Dashboard öffnen → **Bearbeiten** → **Karte hinzufügen**.
 2. Nach **Glass Energy Flow Card** suchen.
 3. Im Editor die Bereiche nacheinander ausfüllen: PV-Quellen, PV-Ertrag & Vorhersage, Speicher,
-   Netz, Haus, Klima, Verbraucher, Kopfzeile, Farben.
+   Netz, Haus, E-Auto, Klima, Verbraucher, Kopfzeile, Farben.
 
 Tipp: Die Karte wirkt am besten in voller Breite – in einer **Abschnitte**-Ansicht über die
 ganze Breite, oder als **Panel**-Ansicht.
 
 ### 3. Bilder auswählen
 
-Haus, Netz, Speicher und PV-Anlagen zeigen ohne weitere Einstellung die mitgelieferten Grafiken.
+Haus, Netz, Speicher, PV-Anlagen und das E-Auto zeigen ohne weitere Einstellung die mitgelieferten Grafiken.
 Im Editor hat jeder Eintrag ein Bildfeld:
 
 ![Bildauswahl im Editor](docs/editor-de.png)
@@ -161,8 +164,32 @@ Im YAML: `image: builtin:<name>`, `image: none` (nur Symbol) oder eine Bild-URL.
 | `battery`, `battery-stack` | Speicher (Standard: `battery`) |
 | `solar-roof`, `solar-balcony`, `solar-garage`, `solar-ground` | PV-Anlagen (Standard: `solar-roof`) |
 | `washer`, `dryer`, `dishwasher`, `pump`, `freezer` | Verbraucher |
+| `ev-plugged`, `ev` | E-Auto (Standard: wechselt mit dem Steckerstatus) |
 
-### 4. Bildschirm wachhalten (Echo Show, Fire-Tablets) *(optional)*
+### 4. E-Auto *(optional)*
+
+Der Bereich **E-Auto** zeigt dein Auto rechts oben über der Klima-Gruppe: Ladestand und
+Ladeleistung als die zwei großen Werte, dazu Status, Restladezeit, Reichweite und einen
+Ladebalken mit Ziel-Ladestand. Das gezeichnete Auto steht eingesteckt an der Ladesäule, sonst
+hängt das Kabel aufgerollt an der Säule.
+
+![E-Auto: lädt und nicht eingesteckt](docs/ev-de.png)
+
+- **Ladestand** (`soc`, %) und **Ladeleistung** (`power`, W – am besten die Leistung der Wallbox,
+  damit sie zum Stromfluss ins Auto passt) reichen schon.
+- **Stecker / Verbindung** *(optional)*: eine Entität, die sagt, ob das Kabel steckt, z. B.
+  `Connected`, `plugged_in`, `on` oder `charging`. Ohne sie gilt das Auto als eingesteckt, solange
+  es lädt.
+- **Reichweite**, **Restzeit bis voll** (Minuten) und **Ziel-Ladestand** *(optional)*.
+- **Zusatzwerte** *(optional)*: bis zu sechs weitere Entitäten – z. B. Tage oder Kilometer bis zum
+  nächsten Service, Kilometerstand – erscheinen in einer dezenten Symbolzeile. Zahlen werden mit
+  der Einheit des Sensors angezeigt; ein Tipp öffnet die Details.
+- **Eigenes Foto:** im Bildfeld ein Foto deines Autos hochladen oder seine URL eintragen. Es füllt
+  die Fläche mit abgerundeten Ecken (*Eigenes Foto → Ganz zeigen* passt es stattdessen ein).
+  Eingesteckt zeigt ein Stecker-Symbol die Verbindung – oder du hinterlegst ein zweites Foto für
+  diesen Zustand (`image_plugged`).
+
+### 5. Bildschirm wachhalten (Echo Show, Fire-Tablets) *(optional)*
 
 Läuft das Dashboard auf einer Echo Show oder einem Fire-Tablet, springt das Gerät nach einer
 Weile in den Fotorahmen-Modus. Die Karte kann das verhindern: im Editor unter **Bildschirm
@@ -224,14 +251,20 @@ climate:
       - label: Heute
         entity: sensor.klima_verbrauch_heute
         unit: kWh
+vehicles:
+  - name: Mein E-Auto
+    soc: sensor.auto_ladestand
+    power: sensor.wallbox_leistung
+    plug: sensor.auto_ladekabel
+    range: sensor.auto_reichweite
+    time_to_full: sensor.auto_restladezeit
+    target_soc: sensor.auto_ladeziel
+    metrics:
+      - entity: sensor.auto_tage_bis_service
+        icon: mdi:wrench-clock
+      - entity: sensor.auto_kilometerstand
+        icon: mdi:counter
 consumers:
-  - name: Wallbox
-    entity: sensor.wallbox_leistung
-    icon: mdi:ev-station
-    color: "#a78bfa"
-    secondary:
-      entity: sensor.auto_ladestand
-      unit: "%"
   - name: Waschm.
     entity: sensor.waschmaschine_leistung
     image: builtin:washer
@@ -253,6 +286,7 @@ grid_options:
 | `batteries[]` | `name`, `soc` (%), `power` (W), `invert`, `icon`, `image`, `image_light` |
 | `grid` | `entity` (W), `invert`, `import_today`, `export_today`, `name`, `icon`, `image`, `image_light` |
 | `home` | `entity` (W), `icon`, `image`, `image_light` |
+| `vehicles[]` | `name`, `soc` (%), `power` (W), `plug`, `range` (km), `time_to_full` (min), `target_soc`, `threshold` (W, Standard 50), `invert`, `icon`, `image`, `image_plugged`, `image_fit` (`cover`/`contain`), `metrics[]` (`entity`, `icon`, `unit`; bis zu 6) |
 | `climate[]` | `name`, `entity` (W), `state_entity`, `icon`, `image`, `metrics[]` (`label`, `entity`, `unit`) |
 | `consumers[]` | `name`, `entity`, `unit`, `icon`, `color`, `image`, `hidden`, `secondary` (`entity`, `label`, `unit`) |
 | `layout` | `mode`: `auto` (Standard), `wide`, `mid`, `narrow`; Umschaltpunkte `wide_min` (1100 px), `mid_min` (680 px) |

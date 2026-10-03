@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.0.0";
+  const CARD_VERSION = "1.0.1";
 
   // ---------------------------------------------------------------- helpers
   const num = (hass, id) => {
@@ -2098,7 +2098,7 @@ function step1Battery(x,y,w,h,b,compact) {
     .map(p => step1Fit("Heute " + fmtPvEnergy(p.energyToday), n.cellW - 16, n.compact ? 13 : 14, 600)), 14);
   for (let i = 0; i < d.solar.length; i++) {
     const p = d.solar[i];
-    const image = (light && p.image_light ? p.image_light : p.image) || "builtin:solar-roof";
+    const image = resolveImage((light && p.image_light ? p.image_light : p.image) || "builtin:solar-roof");
     const row = Math.floor(i / n.perRow), col = i % n.perRow;
     const x = start + col * (n.cellW + n.cellGap), y = top + row * (n.cellH + 8);
     const cx = x + n.cellW / 2;

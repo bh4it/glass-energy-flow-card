@@ -1,126 +1,224 @@
 # Glass Energy Flow Card
 
-A glassmorphism energy flow card for Home Assistant: PV (several arrays, with daily yield and
-forecast), storage, grid, house, climate and freely configurable consumers in one animated
-card. Comes with a matching battery card and isometric artwork.
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Dashboard%20Card-03A9F4.svg)](https://www.home-assistant.io)
 
-Vanilla Web Components, no build step. The card's labels are German.
+Der komplette Energiefluss deines Hauses in **einer** animierten Karte im Glas-Look:
+mehrere PV-Anlagen mit Tagesertrag und Prognose, Speicher, Netz, Haus, Klima und beliebig viele
+Verbraucher – mit leuchtenden Stromflüssen, die Richtung und Leistung zeigen.
 
-## Cards
+![Glass Energy Flow Card – dunkles Design](docs/screenshot-dark.png)
 
-| Card | Type |
+## Funktionen
+
+- **PV-Total** mit beliebig vielen Anlagen (Leistung + Ertrag heute) und **PV-Prognose**
+  (Heute / Rest / Morgen)
+- **Speicher** – mehrere Batterien mit Ladestand, Lade-/Entladeleistung
+- **Netz** mit Bezug/Einspeisung heute, **Haus** mit Gesamtverbrauch
+- **Klima** – Klimaanlagen/Wärmepumpen mit eigenen Kennzahlen (z. B. Kühlen/Heizen heute)
+- **Verbraucher** – frei konfigurierbar, mit Farbe, Bild und zweiter Zeile (z. B. Akkustand des
+  Autos an der Wallbox oder Wassertemperatur am Heizstab)
+- **Kopfzeile** mit realem Bezug/Einspeisung, Temperatur, Luftfeuchte, Wetter und UV-Index
+- **Responsiv**: breites, mittleres und schmales Layout (Handy) automatisch
+- **9 Farbthemen**, hell und dunkel, drei Leitungs-Animationen
+- **Mitgelieferte Grafiken** für Haus, Netz, Speicher, PV und Haushaltsgeräte – eigene Bilder per
+  Upload im Editor
+- **Visueller Editor** – alles per Klick, kein YAML nötig
+- Dazu passend: die **Glass Energy Battery Card**
+
+| Hell | Handy |
 |---|---|
-| Glass Energy Flow Card | `custom:glass-energy-flow-card` |
-| Glass Energy Battery Card | `custom:glass-energy-battery-card` |
-
-Both have a visual editor: **Edit dashboard → Add card → "Glass Energy"**.
+| ![Helles Design](docs/screenshot-light.png) | ![Schmales Layout](docs/screenshot-mobile.png) |
 
 ## Installation
 
-### HACS
+### Über HACS (empfohlen)
 
-1. **HACS → ⋮ → Custom repositories**
-2. Repository `https://github.com/bh4it/glass-energy-flow-card`, type **Dashboard**
-   (HACS' category for dashboard cards).
-3. Download **Glass Energy Flow Card** and reload the browser.
+[![In HACS öffnen](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=bh4it&repository=glass-energy-flow-card&category=plugin)
 
-### Manual
+Oder von Hand:
 
-Copy everything in `dist/` to `<config>/www/glass-energy-flow-card/` and add the resource
-`/local/glass-energy-flow-card/glass-energy-flow-card.js` as **JavaScript module**.
+1. In Home Assistant **HACS** öffnen.
+2. Oben rechts **⋮ → Benutzerdefinierte Repositories**.
+3. Repository: `https://github.com/bh4it/glass-energy-flow-card`, Typ: **Dashboard** → **Hinzufügen**.
+4. Nach **Glass Energy Flow Card** suchen → **Herunterladen**.
+5. Browser neu laden (bei Bedarf Cache leeren, in der App: *Einstellungen → Companion App →
+   Frontend-Cache zurücksetzen*).
 
-## Configuration
+HACS legt die Ressource `/hacsfiles/glass-energy-flow-card/glass-energy-flow-card.js`
+automatisch an.
+
+### Manuell
+
+1. Alle Dateien aus [`dist/`](dist) nach `<config>/www/glass-energy-flow-card/` kopieren.
+2. **Einstellungen → Dashboards → ⋮ → Ressourcen → Ressource hinzufügen**:
+   URL `/local/glass-energy-flow-card/glass-energy-flow-card.js`, Typ **JavaScript-Modul**.
+3. Browser neu laden.
+
+## Einrichtung
+
+### 1. Sensoren vorbereiten
+
+Die Karte zeigt nur an, was du ihr gibst. Typischerweise brauchst du:
+
+| Wofür | Sensor | Einheit |
+|---|---|---|
+| PV-Leistung je Anlage | aktuelle Leistung des Wechselrichters / Messgeräts | W |
+| PV-Ertrag heute je Anlage *(optional)* | Tageszähler, z. B. Helfer *Verbrauchszähler* (täglich) | kWh / Wh |
+| Netz | Netzleistung: **positiv = Bezug, negativ = Einspeisung** | W |
+| Speicher | Ladestand und Leistung: **negativ = laden, positiv = entladen** | % / W |
+| Haus | Gesamtverbrauch des Hauses | W |
+| Verbraucher | Leistung, z. B. von Zwischensteckern | W |
+
+Hat ein Sensor das umgekehrte Vorzeichen, setze bei Netz bzw. Speicher `invert: true`.
+
+**PV-Prognose:** gut geeignet ist die Integration
+[Forecast.Solar](https://www.home-assistant.io/integrations/forecast_solar/). Hast du mehrere
+Dachflächen/Ausrichtungen, lege je Fläche einen Forecast.Solar-Eintrag an und summiere die
+Werte in einem Template-Sensor, z. B.:
+
+```jinja
+{{ (states('sensor.energy_production_today') | float(0)
+  + states('sensor.energy_production_today_2') | float(0)) | round(2) }}
+```
+
+(analog für `energy_production_today_remaining` und `energy_production_tomorrow`).
+
+### 2. Karte hinzufügen
+
+1. Dashboard öffnen → **Bearbeiten** → **Karte hinzufügen**.
+2. Nach **Glass Energy Flow Card** suchen.
+3. Im Editor die Bereiche nacheinander ausfüllen: Kopfzeile, PV, Speicher, Netz, Haus, Klima,
+   Verbraucher, Design.
+
+Tipp: Die Karte wirkt am besten in voller Breite – in einer **Abschnitte**-Ansicht über die
+ganze Breite, oder als **Panel**-Ansicht.
+
+### 3. Bilder
+
+Haus, Netz, Speicher und PV-Anlagen zeigen automatisch die mitgelieferten Grafiken. Du kannst
+jede Grafik im Editor ändern:
+
+- **Mitgelieferte Grafik:** `builtin:<name>` (siehe unten) – im hellen Design wird automatisch
+  die helle Variante genommen.
+- **Eigenes Bild:** im Editor hochladen oder eine Bild-URL eintragen (`image`, für das helle
+  Design optional `image_light`).
+- **Nur Icon:** `image: none` zeigt stattdessen das MDI-Icon (`icon`).
+
+![Mitgelieferte Grafiken](docs/artwork.png)
+
+| Name | Verwendung |
+|---|---|
+| `home` | Haus (Standard) |
+| `grid` | Netz (Standard) |
+| `battery`, `battery-stack` | Speicher (Standard: `battery`) |
+| `solar-roof`, `solar-balcony`, `solar-garage`, `solar-ground` | PV-Anlagen (Standard: `solar-roof`) |
+| `washer`, `dryer`, `dishwasher`, `pump`, `freezer` | Verbraucher |
+
+## Beispielkonfiguration
 
 ```yaml
 type: custom:glass-energy-flow-card
 title: Energie
 header:
-  real_import: sensor.grid_import_today      # kWh
-  real_export: sensor.grid_export_today      # kWh
-  temp: sensor.outdoor_temperature
-  humidity: sensor.outdoor_humidity
+  real_import: sensor.netzbezug_heute
+  real_export: sensor.einspeisung_heute
+  temp: sensor.aussentemperatur
+  humidity: sensor.luftfeuchtigkeit
   weather: weather.home
   uv: sensor.uv_index
 pv:
-  energy_today: sensor.pv_energy_today
-  forecast_today: sensor.pv_forecast_today
-  forecast_remaining: sensor.pv_forecast_remaining_today
-  forecast_tomorrow: sensor.pv_forecast_tomorrow
+  energy_today: sensor.pv_ertrag_heute
+  forecast_today: sensor.pv_prognose_heute
+  forecast_remaining: sensor.pv_prognose_resttag
+  forecast_tomorrow: sensor.pv_prognose_morgen
 solar:
   - name: Dach
-    entity: sensor.pv_roof_power
-    energy_today: sensor.pv_roof_energy_today
+    entity: sensor.pv_dach_leistung
+    energy_today: sensor.pv_dach_ertrag_heute
     image: builtin:solar-roof
   - name: Balkon
-    entity: sensor.pv_balcony_power
-    energy_today: sensor.pv_balcony_energy_today
+    entity: sensor.pv_balkon_leistung
+    energy_today: sensor.pv_balkon_ertrag_heute
     image: builtin:solar-balcony
 batteries:
   - name: Speicher
-    soc: sensor.battery_soc
-    power: sensor.battery_power
+    soc: sensor.speicher_ladestand
+    power: sensor.speicher_leistung
 grid:
-  entity: sensor.grid_power                  # positive = import
-  import_today: sensor.grid_import_today
-  export_today: sensor.grid_export_today
+  entity: sensor.netzleistung
+  import_today: sensor.netzbezug_heute
+  export_today: sensor.einspeisung_heute
 home:
-  entity: sensor.house_consumption
+  entity: sensor.hausverbrauch
 climate:
   - name: Klima
-    entity: sensor.ac_power
+    entity: sensor.klima_leistung
+    metrics:
+      - label: Heute
+        entity: sensor.klima_verbrauch_heute
+        unit: kWh
 consumers:
-  - name: Waschm.
-    entity: sensor.washer_power
-    image: builtin:washer
   - name: Wallbox
-    entity: sensor.wallbox_power
+    entity: sensor.wallbox_leistung
     icon: mdi:ev-station
+    color: "#a78bfa"
     secondary:
-      entity: sensor.car_battery_level
+      entity: sensor.auto_ladestand
       unit: "%"
+  - name: Waschm.
+    entity: sensor.waschmaschine_leistung
+    image: builtin:washer
 theme:
   preset: blau
 grid_options:
   columns: full
 ```
 
-Only configure what you want to see; the visual editor covers most options.
+## Optionen
 
-### Built-in artwork
-
-`image: builtin:<name>` uses the bundled artwork; light variants are picked automatically in
-the light themes. `image: none` shows the icon instead. Any other value is used as an image URL
-(for example images uploaded through the editor).
-
-| Name | Default for |
+| Bereich | Optionen |
 |---|---|
-| `home` | house |
-| `grid` | grid |
-| `battery`, `battery-stack` | batteries (`battery`) |
-| `solar-roof`, `solar-balcony`, `solar-garage`, `solar-ground` | PV arrays (`solar-roof`) |
-| `washer`, `dryer`, `dishwasher`, `pump`, `freezer` | – |
+| `title` | Überschrift der Karte |
+| `header` | `real_import`, `real_export` (kWh), `temp`, `humidity`, `weather`, `uv` |
+| `pv` | `energy_today`, `forecast_today`, `forecast_remaining`, `forecast_tomorrow` |
+| `solar[]` | `name`, `entity` (W), `energy_today`, `icon`, `image`, `image_light` |
+| `batteries[]` | `name`, `soc` (%), `power` (W), `invert`, `icon`, `image`, `image_light` |
+| `grid` | `entity` (W), `invert`, `import_today`, `export_today`, `name`, `icon`, `image`, `image_light` |
+| `home` | `entity` (W), `icon`, `image`, `image_light` |
+| `climate[]` | `name`, `entity` (W), `state_entity`, `icon`, `image`, `metrics[]` (`label`, `entity`, `unit`) |
+| `consumers[]` | `name`, `entity`, `unit`, `icon`, `color`, `image`, `hidden`, `secondary` (`entity`, `label`, `unit`) |
+| `layout` | `mode`: `auto` (Standard), `wide`, `mid`, `narrow`; Umschaltpunkte `wide_min` (1100 px), `mid_min` (680 px) |
+| `theme` | `preset`: `blau`, `dunkel`, `mitternacht`, `petrol`, `violett`, `grafit`, `hell`, `hell-blau`, `hell-violett`; `wires`: `puls`, `strich`, `ruhig`; Feinschliff mit `center`, `edge`, `spread`, `tile` |
 
-### Themes
+## Glass Energy Battery Card
 
-`theme.preset`: `blau` (default), `dunkel`, `mitternacht`, `petrol`, `violett`, `grafit`,
-`hell`, `hell-blau`, `hell-violett`. Colours can be fine-tuned with `center`, `edge`, `spread`
-and `tile`.
+Eine einzelne Batterie im selben Look – mit Ladestand, Leistung und frei wählbaren Kennzahlen.
 
-### Layout
-
-`layout.mode: auto` switches between wide, medium and narrow layouts at `wide_min` (1100 px) and
-`mid_min` (680 px).
-
-## Battery card
+![Glass Energy Battery Card](docs/screenshot-battery.png)
 
 ```yaml
 type: custom:glass-energy-battery-card
 name: Speicher
-entity: sensor.battery_soc
-power: sensor.battery_power
+entity: sensor.speicher_ladestand
+power: sensor.speicher_leistung
+icon: mdi:battery-high
 accent: "#00a8ff"
 accent2: "#33e6c7"
 details:
-  - entity: sensor.battery_health
-    name: Akkuzustand
+  - entity: sensor.speicher_zustand
+    name: Zustand
+    icon: mdi:battery-heart-variant
+  - entity: sensor.speicher_geladen_heute
+    name: Geladen
+    icon: mdi:battery-plus
 ```
+
+## Fehlerbehebung
+
+- **Karte wird nicht gefunden / „Custom element doesn't exist“:** Browser-Cache leeren und neu
+  laden; prüfen, ob die Ressource unter *Einstellungen → Dashboards → Ressourcen* als
+  JavaScript-Modul eingetragen ist.
+- **Fluss zeigt in die falsche Richtung:** Vorzeichen des Sensors prüfen und bei Netz bzw.
+  Speicher `invert: true` setzen.
+- **„–“ statt Wert:** Sensor ist `unknown`/`unavailable` oder die Entity-ID ist falsch.

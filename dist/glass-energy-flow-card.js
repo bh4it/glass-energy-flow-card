@@ -13,7 +13,163 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.0.1";
+  const CARD_VERSION = "1.1.0";
+
+  // ------------------------------------------------------------------ i18n
+  // The UI follows Home Assistant's language: German for "de", English
+  // otherwise. The German texts double as keys, EN maps them to English.
+  const langOf = (l) => (/^de\b/i.test(l || "") ? "de" : "en");
+  let LANG = langOf(typeof navigator !== "undefined" ? navigator.language : "");
+  let DEC = LANG === "de" ? "," : ".";
+  /** Adopt the language of hass; returns true when it changed. */
+  const setLang = (hass) => {
+    const l = hass && ((hass.locale && hass.locale.language) || hass.language);
+    if (!l || langOf(l) === LANG) return false;
+    LANG = langOf(l);
+    DEC = LANG === "de" ? "," : ".";
+    return true;
+  };
+  const EN = {
+    "Energie": "Energy",
+    "Netz nicht verfügbar": "Grid unavailable",
+    "Netzbezug": "Grid import",
+    "Einspeisung": "Export",
+    "Netz": "Grid",
+    "Bezug heute": "Import today",
+    "lädt": "charging",
+    "entlädt": "discharging",
+    "hält": "idle",
+    "Realer Bezug": "Metered import",
+    "Reale Einspeisung": "Metered export",
+    "Unvollständig": "Incomplete",
+    "SPEICHER": "STORAGE",
+    "PV-TOTAL": "PV TOTAL",
+    "PV-VORHERSAGE": "PV FORECAST",
+    "KLIMA": "CLIMATE",
+    "Ertrag heute": "Yield today",
+    "Heute": "Today",
+    "Rest": "Remaining",
+    "Morgen": "Tomorrow",
+    "Keine Daten": "No data",
+    "Lädt": "Charging",
+    "Entlädt": "Discharging",
+    "Bereit": "Idle",
+    "Batterie": "Battery",
+    "Energiefluss mit PV, Speicher, Netz, Klima, Verbrauchern und PV-Prognose.": "Energy flow with PV, storage, grid, climate, consumers and PV forecast.",
+    "Akku mit Ladestand, Leistung und Kennzahlen im selben Glas-Look.": "Battery with state of charge, power and metrics in the same glass look.",
+    "PV-Quellen": "PV sources",
+    "PV-Ertrag & Vorhersage": "PV yield & forecast",
+    "Speicher": "Storage",
+    "Haus": "House",
+    "Klima": "Climate",
+    "Verbraucher": "Consumers",
+    "Kopfzeile": "Header",
+    "Farben": "Colours",
+    "Bereiche": "Sections",
+    "Titel": "Title",
+    "Layout": "Layout",
+    "Automatisch (empfohlen)": "Automatic (recommended)",
+    "Immer breit (Desktop)": "Always wide (desktop)",
+    "Immer mittel (Tablet)": "Always medium (tablet)",
+    "Immer gestapelt (Handy)": "Always stacked (phone)",
+    "Breit ab … px": "Wide from … px",
+    "Mittel ab … px": "Medium from … px",
+    "Höhe anpassen": "Fit height",
+    "In Vollbild-Sichten (empfohlen)": "In full-screen views (recommended)",
+    "Immer an Fensterhöhe anpassen": "Always fit the window height",
+    "Nie (natürliche Höhe)": "Never (natural height)",
+    "Abstand nach unten (px)": "Bottom gap (px)",
+    "Design": "Appearance",
+    "Dunkel": "Dark",
+    "Hell": "Light",
+    "Farbschema": "Colour scheme",
+    "Dunkel · Blau (Standard)": "Dark · Blue (default)",
+    "Dunkel · Nachtblau": "Dark · Night blue",
+    "Dunkel · Mitternacht": "Dark · Midnight",
+    "Dunkel · Petrol": "Dark · Petrol",
+    "Dunkel · Violett": "Dark · Violet",
+    "Dunkel · Grafit": "Dark · Graphite",
+    "Hell · Fluent": "Light · Fluent",
+    "Hell · Blau": "Light · Blue",
+    "Hell · Violett": "Light · Violet",
+    "Leitungen": "Wires",
+    "Lichtimpuls (empfohlen)": "Light pulse (recommended)",
+    "Laufende Striche (wie bisher)": "Running dashes (classic)",
+    "Ruhig – ohne Bewegung": "Calm – no motion",
+    "Farbe innen": "Inner colour",
+    "Farbe außen": "Outer colour",
+    "Ausdehnung innen (%)": "Inner spread (%)",
+    "Deckkraft der Kacheln (%)": "Tile opacity (%)",
+    "Realer Bezug (Zähler)": "Metered import (meter)",
+    "Reale Einspeisung (Zähler)": "Metered export (meter)",
+    "Außentemperatur": "Outdoor temperature",
+    "Luftfeuchtigkeit": "Humidity",
+    "UV-Index": "UV index",
+    "Wetter": "Weather",
+    "Netzleistung": "Grid power",
+    "Name": "Name",
+    "Symbol": "Icon",
+    "Einspeisung heute": "Export today",
+    "Vorzeichen umkehren (positiv = Bezug)": "Invert sign (positive = import)",
+    "Hausverbrauch": "House consumption",
+    "Leistungssensor": "Power sensor",
+    "Ertrag heute (Tageszähler)": "Yield today (daily counter)",
+    "Einheit, falls der Sensor noch keine meldet": "Unit, if the sensor reports none",
+    "Gesamtertrag heute (gemessen)": "Total yield today (measured)",
+    "PV-Vorhersage heute": "PV forecast today",
+    "PV-Vorhersage Resttag": "PV forecast rest of day",
+    "PV-Vorhersage morgen": "PV forecast tomorrow",
+    "Ladestand (%)": "State of charge (%)",
+    "Leistung (W)": "Power (W)",
+    "Vorzeichen umkehren (negativ = lädt)": "Invert sign (negative = charging)",
+    "Status-Entität (optional)": "State entity (optional)",
+    "Standby bis … W ausblenden (Standard 5)": "Hide standby up to … W (default 5)",
+    "Kennzahl 1": "Metric 1",
+    "Kennzahl 2": "Metric 2",
+    "Entität": "Entity",
+    "Beschriftung": "Label",
+    "Einheit": "Unit",
+    "Anzeigename": "Display name",
+    "Farbe (z. B. #4dd0e1)": "Colour (e.g. #4dd0e1)",
+    "Ausblenden": "Hide",
+    "Bei 0 W ausblenden": "Hide at 0 W",
+    "Zweite Zeile (z. B. Tagesverbrauch)": "Second line (e.g. daily usage)",
+    "Entität für die zweite Zeile": "Entity for the second line",
+    "Beschriftung (z. B. Heute)": "Label (e.g. Today)",
+    "(ohne Entität)": "(no entity)",
+    "Das ist keine Bilddatei.": "This is not an image file.",
+    "Bild ist größer als 4 MB.": "The image is larger than 4 MB.",
+    "Upload fehlgeschlagen": "Upload failed",
+    "Editor konnte nicht geladen werden": "The editor could not be loaded",
+    "Eigenes Bild": "Custom image",
+    "Kein Bild — Symbol wird verwendet": "No image — the icon is used",
+    "Ersetzt das Symbol auf der Karte.": "Replaces the icon on the card.",
+    "Datei hierher ziehen oder auswählen (max. 4 MB).": "Drop a file here or choose one (max. 4 MB).",
+    "Ersetzen": "Replace",
+    "Eigenes Bild hochladen": "Upload image",
+    "Zurücksetzen": "Reset",
+    "Wird hochgeladen …": "Uploading …",
+    "Standard-Grafik": "Default artwork",
+    "Mitgelieferte Grafik": "Built-in artwork",
+    "Nur Symbol": "Icon only",
+    "Automatisch passend zum Bild oben": "Automatically matches the image above",
+    "Noch nichts konfiguriert": "Nothing configured yet",
+    "Keine Entität": "No entity",
+    "Nichts angezeigt": "Nothing shown",
+    "Zurück": "Back",
+    "Optionales Bild im hellen Design": "Optional image for the light theme",
+    "Reihenfolge bestimmt die Platzierung: die ersten füllen die rechte Spalte, der Rest die Reihen darunter.": "The order sets the placement: the first ones fill the right column, the rest the rows below.",
+    "Mit den Pfeilen sortieren, mit dem Stift bearbeiten.": "Sort with the arrows, edit with the pencil.",
+    "Noch nichts konfiguriert — unten eine Entität auswählen.": "Nothing configured yet — pick an entity below.",
+    "Einblenden": "Show",
+    "Nach oben": "Move up",
+    "Nach unten": "Move down",
+    "Bearbeiten": "Edit",
+    "Entfernen": "Remove",
+    "Hinzufügen": "Add",
+    "Tipp: Steckdosen-Sensoren heißen meist „sensor.steckdose_…_power“.": "Tip: smart plug sensors are usually named “sensor.…_power”.",
+  };
+  const T = (s) => (LANG === "de" ? s : (EN[s] ?? s));
 
   // ---------------------------------------------------------------- helpers
   const num = (hass, id) => {
@@ -26,29 +182,29 @@
   const fmtW = (w) => {
     if (w == null) return "–";
     const a = Math.abs(w);
-    if (a >= 1000) return (w / 1000).toFixed(2).replace(".", ",") + " kW";
+    if (a >= 1000) return (w / 1000).toFixed(2).replace(".", DEC) + " kW";
     // Below 10 W keep one decimal: rounding 0.4 W to "0 W" makes a device that
     // is genuinely drawing power look switched off.
-    if (a > 0 && a < 10) return w.toFixed(1).replace(".", ",") + " W";
+    if (a > 0 && a < 10) return w.toFixed(1).replace(".", DEC) + " W";
     return Math.round(w) + " W";
   };
-  const fmtKWh = (v) => (v == null ? "–" : v.toFixed(1).replace(".", ",") + " kWh");
+  const fmtKWh = (v) => (v == null ? "–" : v.toFixed(1).replace(".", DEC) + " kWh");
   const energyKWh = (hass, id, configuredUnit) => {
     const value = num(hass, id);
     if (value == null) return null;
     const unit = hass.states[id].attributes.unit_of_measurement || configuredUnit;
     return unit === "kWh" ? value : unit === "Wh" ? value / 1000 : unit === "MWh" ? value * 1000 : null;
   };
-  const fmtPvEnergy = (value) => value == null ? "– kWh" : value.toFixed(2).replace(".", ",") + " kWh";
+  const fmtPvEnergy = (value) => value == null ? "– kWh" : value.toFixed(2).replace(".", DEC) + " kWh";
   const PV_FORECAST = [
     { key: "forecast_today", label: "Heute" },
     { key: "forecast_remaining", label: "Rest" },
     { key: "forecast_tomorrow", label: "Morgen" },
   ];
-  const fmtMeter = (v) => (v == null ? "–" : new Intl.NumberFormat("de-DE", {
+  const fmtMeter = (v) => (v == null ? "–" : new Intl.NumberFormat(LANG === "de" ? "de-DE" : "en-US", {
     minimumFractionDigits: 2, maximumFractionDigits: 2,
   }).format(v) + " kWh");
-  const fmtTemp = (v) => (v == null ? "–" : v.toFixed(1).replace(".", ",") + " °C");
+  const fmtTemp = (v) => (v == null ? "–" : v.toFixed(1).replace(".", DEC) + " °C");
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -71,77 +227,6 @@
     sunny: "mdi:weather-sunny", windy: "mdi:weather-windy",
     "windy-variant": "mdi:weather-windy-variant",
   };
-
-  // ------------------------------------------------- legacy config migration
-  const LEGACY_SOLAR = [
-    { key: "pv_dach", name: "Dach", icon: "mdi:solar-power-variant" },
-    { key: "pv_balkon", name: "Balkon", icon: "mdi:solar-panel" },
-    { key: "pv_garage", name: "Garage", icon: "mdi:solar-panel-large" },
-    { key: "pv_garten", name: "Garten", icon: "mdi:solar-panel" },
-  ];
-  const LEGACY_CONSUMERS = [
-    { key: "wallbox", name: "Wallbox", icon: "mdi:ev-station", color: "#a78bfa" },
-    { key: "heizstab", name: "Heizstab", icon: "mdi:heating-coil", color: "#ff7043", secondary: { key: "boiler_temp", label: "Wasser", unit: "°C" } },
-    { key: "waschmaschine", name: "Waschm.", icon: "mdi:washing-machine", color: "#4dd0e1" },
-    { key: "trockner", name: "Trockner", icon: "mdi:tumble-dryer", color: "#4db6ac" },
-    { key: "spuelmaschine", name: "Spülm.", icon: "mdi:dishwasher", color: "#9ccc65" },
-    { key: "wasserpumpe", name: "Pumpe", icon: "mdi:water-pump", color: "#4fc3f7" },
-    { key: "heissluftfritteuse", name: "Fritteuse", icon: "mdi:toaster-oven", color: "#ffb74d" },
-    { key: "gas", name: "Gas heute", icon: "mdi:fire", color: "#ffa726", unit: "kWh" },
-    { key: "kuehltruhe", name: "Kühltruhe", icon: "mdi:fridge-outline", color: "#80deea" },
-  ];
-
-  const isLegacy = (cfg) => {
-    const e = cfg.entities || {};
-    if (Array.isArray(cfg.solar) || Array.isArray(cfg.consumers) || Array.isArray(cfg.batteries)) return false;
-    return !!(e.pv_dach || e.home_power || e.grid_power || e.bat1_soc || e.wallbox);
-  };
-
-  function migrate(cfg) {
-    const e = cfg.entities || {};
-    const img = cfg.images || {};
-    const hidden = new Set(cfg.hidden_consumers || []);
-    const out = {
-      type: cfg.type,
-      title: cfg.title || "Energie",
-      layout: cfg.layout || { mode: "auto" },
-      header: {
-        real_import: e.real_grid_import, real_export: e.real_grid_export,
-        temp: e.temp, humidity: e.humidity, weather: e.weather, uv: e.uv,
-      },
-      solar: LEGACY_SOLAR.filter((d) => e[d.key])
-        .map((d) => ({ entity: e[d.key], name: d.name, icon: d.icon, image: img[d.key] })),
-      batteries: [],
-      grid: {
-        entity: e.grid_power, invert: !!cfg.grid_invert,
-        import_today: e.grid_import_today, export_today: e.grid_export_today,
-        name: "Netz", icon: "mdi:transmission-tower", image: img.grid,
-      },
-      home: { entity: e.home_power, icon: "mdi:home-lightning-bolt", image: img.home },
-      climate: [],
-      consumers: LEGACY_CONSUMERS.filter((d) => e[d.key]).map((d) => ({
-        entity: e[d.key], name: d.name, icon: d.icon, color: d.color,
-        unit: d.unit || "W", image: img[d.key], hidden: hidden.has(d.key),
-        secondary: d.secondary && e[d.secondary.key]
-          ? { entity: e[d.secondary.key], label: d.secondary.label, unit: d.secondary.unit }
-          : undefined,
-      })),
-    };
-    if (e.bat1_soc || e.bat1_power) out.batteries.push({ name: "Sonnen", soc: e.bat1_soc, power: e.bat1_power, icon: "mdi:battery-high", image: img.bat1 });
-    if (e.bat2_soc || e.bat2_power) out.batteries.push({ name: "Anker", soc: e.bat2_soc, power: e.bat2_power, icon: "mdi:battery-charging", image: img.bat2 });
-    if (e.klima) out.climate.push({ name: "Bella & Kurt", entity: e.klima, icon: "mdi:air-conditioner", metrics: e.klima_daily ? [{ label: "Heute", entity: e.klima_daily, unit: "kWh" }] : [] });
-    if (e.daikin_power || e.daikin_climate) {
-      out.climate.push({
-        name: "Daikin Stylish", entity: e.daikin_power, state_entity: e.daikin_climate, icon: "mdi:hvac",
-        metrics: [
-          e.daikin_cool_daily ? { label: "Kühlen", entity: e.daikin_cool_daily, unit: "kWh" } : null,
-          e.daikin_heat_daily ? { label: "Heizen", entity: e.daikin_heat_daily, unit: "kWh" } : null,
-        ].filter(Boolean),
-      });
-    }
-    if (cfg.grid_options) out.grid_options = cfg.grid_options;
-    return out;
-  }
 
   /**
    * Colour presets. `center` pools behind the house, `edge` takes over towards
@@ -264,8 +349,8 @@
   }
 
   function normalize(raw) {
-    const cfg = isLegacy(raw || {}) ? migrate(raw) : JSON.parse(JSON.stringify(raw || {}));
-    cfg.title = cfg.title ?? "Energie";
+    const cfg = JSON.parse(JSON.stringify(raw || {}));
+    cfg.title = cfg.title ?? T("Energie");
     cfg.layout = Object.assign({ mode: "auto", wide_min: 1100, mid_min: 680 }, cfg.layout || {});
     if (cfg.layout.aspect) {
       const a = Number(cfg.layout.aspect);
@@ -1553,9 +1638,9 @@ function step1Grid(n,d,config) {
   const compact=n.compact;
   const size=compact?16:26, labelSize=compact?11:16;
   const value=fmtW(d.gridDisplayValue);
-  const name=d.gridDisplayValue == null ? "Netz nicht verfügbar"
-    : d.gridDisplayValue > 0 ? "Netzbezug"
-    : d.gridDisplayValue < 0 ? "Einspeisung" : config.name || "Netz";
+  const name=d.gridDisplayValue == null ? T("Netz nicht verfügbar")
+    : d.gridDisplayValue > 0 ? T("Netzbezug")
+    : d.gridDisplayValue < 0 ? T("Einspeisung") : config.name || T("Netz");
   const image=step1Image(config,LIGHT) || "builtin:grid";
   const left=n.x+(compact?61:111), room=n.x+n.w-left-12;
   const imgW=compact?45:86, imgH=compact?60:102;
@@ -1567,10 +1652,10 @@ function step1Grid(n,d,config) {
     <text class="step1-grid-value" x="${left}" y="${n.y+(compact?46:65)}"
       style="font-size:${step1Fit(value,room,size,700)}px;font-weight:700">${esc(value)}</text>
     ${!compact?`<path d="M ${n.x+16} ${n.y+113} H ${n.x+n.w-16}" stroke="var(--sc-tile-line)" stroke-width="1"/>`:""}
-    ${config.import_today?`<text class="step1-grid-daily" x="${n.x+14}" y="${n.y+(compact?90:134)}" style="font-size:${compact?9:12}px;fill:var(--sc-ink-soft)">Bezug heute</text>
+    ${config.import_today?`<text class="step1-grid-daily" x="${n.x+14}" y="${n.y+(compact?90:134)}" style="font-size:${compact?9:12}px;fill:var(--sc-ink-soft)">${T("Bezug heute")}</text>
       <text x="${n.x+n.w-14}" y="${n.y+(compact?90:134)}" text-anchor="end"
        style="font-size:${compact?10:13}px">${esc(fmtKWh(d.gridImportToday))}</text>`:""}
-    ${config.export_today?`<text class="step1-grid-daily" x="${n.x+14}" y="${n.y+(compact?109:155)}" style="font-size:${compact?9:12}px;fill:var(--sc-ink-soft)">Einspeisung</text>
+    ${config.export_today?`<text class="step1-grid-daily" x="${n.x+14}" y="${n.y+(compact?109:155)}" style="font-size:${compact?9:12}px;fill:var(--sc-ink-soft)">${T("Einspeisung")}</text>
       <text x="${n.x+n.w-14}" y="${n.y+(compact?109:155)}" text-anchor="end"
        style="font-size:${compact?10:13}px">${esc(fmtKWh(d.gridExportToday))}</text>`:""}
   </g>`;
@@ -1581,7 +1666,7 @@ function step1Battery(x,y,w,h,b,compact) {
   const level=b.socValue==null?0:clamp(b.socValue,0,100);
   const accent=level<=15?"#ff5d6c":level>=95?"#22e6a4":"#37c8ff";
   const label=b.name||"";
-  const state=b.powerValue==null?"":b.charging?"lädt":b.active?"entlädt":"hält";
+  const state=b.powerValue==null?"":T(b.charging?"lädt":b.active?"entlädt":"hält");
   const power=`${fmtW(b.powerValue)}${state?" · "+state:""}`;
   const image=step1Image(b,LIGHT) || "builtin:battery";
   const artW=compact?31:57, artH=compact?44:59;
@@ -1624,10 +1709,10 @@ function step1Battery(x,y,w,h,b,compact) {
     static getStubConfig(hass) {
       const find = (re) => Object.keys(hass?.states || {}).find((id) => re.test(id)) || "";
       return {
-        title: "Energie",
+        title: T("Energie"),
         layout: { mode: "auto" },
         solar: [], batteries: [], climate: [], consumers: [],
-        grid: { entity: find(/^sensor\..*(grid|netz).*power/i), name: "Netz", icon: "mdi:transmission-tower" },
+        grid: { entity: find(/^sensor\..*(grid|netz).*power/i), name: T("Netz"), icon: "mdi:transmission-tower" },
         home: { entity: find(/^sensor\..*(hausverbrauch|home).*(power|gesamt)/i), icon: "mdi:home-lightning-bolt" },
       };
     }
@@ -1730,6 +1815,8 @@ function step1Battery(x,y,w,h,b,compact) {
 
     set hass(hass) {
       this._hass = hass;
+      // Static labels are only written by _build, so a language switch rebuilds.
+      if (setLang(hass)) { this._built = false; this._lastSvg = null; }
       if (!this._built) this._build();
       this._update();
     }
@@ -1745,14 +1832,14 @@ function step1Battery(x,y,w,h,b,compact) {
         h.uv ? chip("headerUv", "mdi:weather-sunny-alert") : "",
       ].join("");
       const meters = [
-        h.real_import ? `<div class="meter">Realer Bezug: <strong id="realImport">–</strong></div>` : "",
-        h.real_export ? `<div class="meter">Reale Einspeisung: <strong id="realExport">–</strong></div>` : "",
+        h.real_import ? `<div class="meter">${T("Realer Bezug")}: <strong id="realImport">–</strong></div>` : "",
+        h.real_export ? `<div class="meter">${T("Reale Einspeisung")}: <strong id="realExport">–</strong></div>` : "",
       ].join("");
       this.shadowRoot.innerHTML = `<style>${CARD_CSS}</style>
         <div class="wrap">
           <div class="hdr">
             <div class="hdr-left">
-              <div class="t">${esc(c.title || "Energie")}</div>
+              <div class="t">${esc(c.title || T("Energie"))}</div>
               ${meters}
             </div>
             <div class="status-chips">${chips}</div>
@@ -2014,7 +2101,7 @@ function step1Battery(x,y,w,h,b,compact) {
             <g class="${c.home.entity ? "clickable" : ""}"${c.home.entity ? ` data-entity="${esc(c.home.entity)}"` : ""}>
             <circle class="center" cx="${n.x}" cy="${n.y}" r="${n.r}" fill="${LIGHT ? "rgba(255,255,255,0.82)" : "rgba(16,28,52,0.85)"}" stroke="${LIGHT ? "rgba(255,255,255,0.95)" : "rgba(120,190,255,0.5)"}" stroke-width="1.5"/>
             ${artwork(n.x - size * .6, n.y - size / 2 - 9, size, img, c.home.icon || "mdi:home-lightning-bolt", "#7fd4ff", "rgba(0,190,255,.6)", size * 1.2)}
-            <text x="${n.x}" y="${n.y + n.r - 12}" text-anchor="middle" font-size="${Math.round(n.r * (d.home == null ? 0.19 : 0.28))}" font-weight="700">${d.home == null ? "Unvollständig" : esc(fmtW(d.home))}</text></g>`;
+            <text x="${n.x}" y="${n.y + n.r - 12}" text-anchor="middle" font-size="${Math.round(n.r * (d.home == null ? 0.19 : 0.28))}" font-weight="700">${d.home == null ? T("Unvollständig") : esc(fmtW(d.home))}</text></g>`;
         }
         case "grid": return step1Grid(n,d,c.grid);
         case "storage": {
@@ -2022,7 +2109,7 @@ function step1Battery(x,y,w,h,b,compact) {
             batterySvg(n.x + 9, n.y + 42 + i * (n.batH + 10), n.w - 18, n.batH, b, false)).join("");
           return `<g class="pulse"><rect class="group-frame" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="18"/>
             ${icon(n.x + 12, n.y + 9, 20, "mdi:battery-sync", "#60a5fa", "rgba(96,165,250,.7)")}
-            <text class="group-title" x="${n.x + 39}" y="${n.y + 25}">SPEICHER</text></g>${inner}`;
+            <text class="group-title" x="${n.x + 39}" y="${n.y + 25}">${T("SPEICHER")}</text></g>${inner}`;
         }
         case "battery": return batterySvg(n.x, n.y, n.w, n.h, d.batteries[n.i], true);
         case "climate": return this._climateGroup(n, d);
@@ -2060,9 +2147,9 @@ function step1Battery(x,y,w,h,b,compact) {
       </linearGradient>
     </defs>
     <rect class="pv-group" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="18"/>
-    <text class="pv-title" x="${n.x + 18}" y="${n.y + 26}">PV-TOTAL</text>`;
+    <text class="pv-title" x="${n.x + 18}" y="${n.y + 26}">${T("PV-TOTAL")}</text>`;
   if (d.pvEnergy.entity) {
-    const label = "Ertrag heute " + fmtPvEnergy(d.pvEnergy.value);
+    const label = T("Ertrag heute") + " " + fmtPvEnergy(d.pvEnergy.value);
     const width = n.summaryStacked ? n.w - 36 : n.w - 158;
     const size = Math.min(14, Math.max(12, step1Fit(label, width, 14, 650)));
     svg += `<g class="clickable" data-entity="${esc(d.pvEnergy.entity)}">
@@ -2080,12 +2167,12 @@ function step1Battery(x,y,w,h,b,compact) {
       <rect x="${fx}" y="${fy}" width="${fw}" height="70" rx="10"
         style="fill:var(--sc-chip-bg);stroke:var(--sc-chip-line)"/>
       <text class="pv-forecast-title" x="${fx + 12}" y="${fy + 17}"
-        style="font-size:11px;font-weight:650;letter-spacing:1px;fill:var(--sc-ink-soft)">PV-VORHERSAGE</text>`;
+        style="font-size:11px;font-weight:650;letter-spacing:1px;fill:var(--sc-ink-soft)">${T("PV-VORHERSAGE")}</text>`;
     d.pvForecast.forEach((f, i) => {
       const cx = fx + columnW * (i + 0.5);
       svg += `<g class="clickable pv-forecast-metric" data-entity="${esc(f.entity)}">
         <text class="pv-forecast-label" x="${cx}" y="${fy + 35}" text-anchor="middle"
-          style="font-size:12px;font-weight:500;fill:var(--sc-ink-soft)">${esc(f.label)}</text>
+          style="font-size:12px;font-weight:500;fill:var(--sc-ink-soft)">${esc(T(f.label))}</text>
         <text class="pv-forecast-value" x="${cx}" y="${fy + 57}" text-anchor="middle"
           style="font-size:${valueSize}px;font-weight:650;fill:var(--sc-ink)">${esc(values[i])}</text>
       </g>`;
@@ -2093,9 +2180,9 @@ function step1Battery(x,y,w,h,b,compact) {
     svg += "</g>";
   }
   const ends = [];
-  const energyTexts = d.solar.map(p => "Heute " + fmtPvEnergy(p.energyToday));
+  const energyTexts = d.solar.map(p => T("Heute") + " " + fmtPvEnergy(p.energyToday));
   const energySize = Math.min(...d.solar.filter(p => p.energy_today)
-    .map(p => step1Fit("Heute " + fmtPvEnergy(p.energyToday), n.cellW - 16, n.compact ? 13 : 14, 600)), 14);
+    .map(p => step1Fit(T("Heute") + " " + fmtPvEnergy(p.energyToday), n.cellW - 16, n.compact ? 13 : 14, 600)), 14);
   for (let i = 0; i < d.solar.length; i++) {
     const p = d.solar[i];
     const image = resolveImage((light && p.image_light ? p.image_light : p.image) || "builtin:solar-roof");
@@ -2134,7 +2221,7 @@ function step1Battery(x,y,w,h,b,compact) {
     _climateGroup(n, d) {
       let s = `<g class="pulse"><rect class="group-frame" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="18"/>
         ${icon(n.x + 12, n.y + 9, 20, "mdi:snowflake-thermometer", "#60a5fa", "rgba(96,165,250,.7)")}
-        <text class="group-title" x="${n.x + 39}" y="${n.y + 25}">KLIMA</text>`;
+        <text class="group-title" x="${n.x + 39}" y="${n.y + 25}">${T("KLIMA")}</text>`;
       const cx = n.x + 9, cw = n.w - 18;
       d.climate.forEach((c, i) => {
         const y = n.y + 42 + i * (n.cellH + 10);
@@ -2159,7 +2246,7 @@ function step1Battery(x,y,w,h,b,compact) {
       if (h.real_export) set("realExport", fmtMeter(num(hass, h.real_export)));
       if (h.temp) set("headerTemp", fmtTemp(num(hass, h.temp)));
       if (h.humidity) { const v = num(hass, h.humidity); set("headerHumidity", v == null ? "–" : Math.round(v) + " %"); }
-      if (h.uv) { const v = num(hass, h.uv); set("headerUv", v == null ? "–" : v.toFixed(1).replace(".", ",")); }
+      if (h.uv) { const v = num(hass, h.uv); set("headerUv", v == null ? "–" : v.toFixed(1).replace(".", DEC)); }
       if (h.weather) {
         const w = hass.states[h.weather];
         set("headerWeather", w ? hass.formatEntityState(w) : "–");
@@ -2365,7 +2452,32 @@ function step1Battery(x,y,w,h,b,compact) {
     { id: "theme",     title: "Farben",      icon: "mdi:palette",               schema: "theme" },
   ];
 
-  const fname = (hass, id) => hass?.states?.[id]?.attributes?.friendly_name || id || "(ohne Entität)";
+  const fname = (hass, id) => hass?.states?.[id]?.attributes?.friendly_name || id || T("(ohne Entität)");
+
+
+  // ha-form takes its labels from the schema, so the schema is translated as a whole.
+  const localizeSchema = (schema) => schema.map((s) => {
+    const o = { ...s };
+    if (o.label) o.label = T(o.label);
+    if (o.title) o.title = T(o.title);
+    if (o.schema) o.schema = localizeSchema(o.schema);
+    const sel = o.selector && o.selector.select;
+    if (sel && Array.isArray(sel.options)) {
+      o.selector = { ...o.selector, select: { ...sel, options: sel.options.map((x) =>
+        (x && typeof x === "object" ? { ...x, label: T(x.label) } : x)) } };
+    }
+    return o;
+  });
+
+  // Bundled artwork offered per section; `fallback` is what the card shows when nothing is set.
+  const IMAGE_OPTS = {
+    solar: { choices: ["solar-roof", "solar-balcony", "solar-garage", "solar-ground"], fallback: "builtin:solar-roof" },
+    batteries: { choices: ["battery", "battery-stack"], fallback: "builtin:battery" },
+    grid: { choices: ["grid"], fallback: "builtin:grid" },
+    home: { choices: ["home"], fallback: "builtin:home" },
+    consumers: { choices: ["washer", "dryer", "dishwasher", "pump", "freezer"] },
+    climate: {},
+  };
 
   const MAX_UPLOAD = 4 * 1024 * 1024;   // 4 MB
 
@@ -2485,8 +2597,8 @@ function step1Battery(x,y,w,h,b,compact) {
   }
 
   async function uploadImage(hass, file) {
-    if (!file.type.startsWith("image/")) throw new Error("Das ist keine Bilddatei.");
-    if (file.size > MAX_UPLOAD) throw new Error("Bild ist größer als 4 MB.");
+    if (!file.type.startsWith("image/")) throw new Error(T("Das ist keine Bilddatei."));
+    if (file.size > MAX_UPLOAD) throw new Error(T("Bild ist größer als 4 MB."));
     let body = file, name = file.name;
     if (file.type !== "image/svg+xml") {
       const cut = await stripBackdrop(file);
@@ -2498,7 +2610,7 @@ function step1Battery(x,y,w,h,b,compact) {
     const fd = new FormData();
     fd.append("file", body, name);
     const res = await hass.fetchWithAuth("/api/image/upload", { method: "POST", body: fd });
-    if (!res.ok) throw new Error(`Upload fehlgeschlagen (HTTP ${res.status})`);
+    if (!res.ok) throw new Error(`${T("Upload fehlgeschlagen")} (HTTP ${res.status})`);
     const data = await res.json();
     return `/api/image/serve/${data.id}/original`;
   }
@@ -2540,7 +2652,7 @@ function step1Battery(x,y,w,h,b,compact) {
            opacity:.65; margin:6px 2px -4px; }
     ha-icon-button.back { --mdc-icon-button-size:38px; }
     .pic {
-      display:flex; align-items:center; gap:12px; padding:10px;
+      display:flex; flex-direction:column; gap:10px; padding:10px;
       border:1px dashed var(--divider-color, rgba(127,127,127,.4));
       border-radius:10px; transition:border-color .15s, background .15s;
     }
@@ -2558,7 +2670,18 @@ function step1Battery(x,y,w,h,b,compact) {
     .pic .body .s.err { color:var(--error-color, #db4437); opacity:1; }
     .pic .acts { display:flex; gap:6px; margin-top:7px; flex-wrap:wrap; }
     .pic mwc-button, .pic ha-button { --mdc-typography-button-font-size:13px; }
-    .pic input[type=file] { display:none; }`;
+    .pic input[type=file] { display:none; }
+    .pic .main { display:flex; align-items:center; gap:12px; }
+    .pic .gal { display:flex; flex-wrap:wrap; gap:6px; }
+    .pic .gal button {
+      width:48px; height:48px; padding:4px; border-radius:9px; cursor:pointer;
+      display:grid; place-items:center;
+      border:2px solid transparent; background:var(--secondary-background-color, rgba(127,127,127,.12));
+    }
+    .pic .gal button:hover { border-color:var(--divider-color, rgba(127,127,127,.4)); }
+    .pic .gal button.sel { border-color:var(--primary-color); }
+    .pic .gal img { width:100%; height:100%; object-fit:contain; }
+    .pic .gal ha-icon { --mdc-icon-size:22px; color:var(--secondary-text-color); }`;
 
   class GlassEnergyFlowCardEditor extends HTMLElement {
     constructor() {
@@ -2571,15 +2694,15 @@ function step1Battery(x,y,w,h,b,compact) {
 
     setConfig(config) {
       this._config = normalize(config);
-      if (isLegacy(config || {})) this._fire(this._config);   // migrate on open
       // keyed render: refresh the existing form in place so typing keeps focus
       this._render();
     }
     set hass(hass) {
       const first = !this._hass;
+      const langChanged = setLang(hass);
       this._hass = hass;
       // entity names only resolve once hass is present, so redraw once
-      if (first) this._render(true); else this._propagate();
+      if (first || langChanged) this._render(true); else this._propagate();
     }
     get hass() { return this._hass; }
 
@@ -2620,7 +2743,7 @@ function step1Battery(x,y,w,h,b,compact) {
         else this._renderPage(root);
       } catch (err) {
         console.error("[glass-energy-flow-card] editor render failed", err);
-        root.innerHTML = `<div class="empty">Editor konnte nicht geladen werden: ${esc(err.message || err)}</div>`;
+        root.innerHTML = `<div class="empty">${T("Editor konnte nicht geladen werden")}: ${esc(err.message || err)}</div>`;
       }
       this._propagate();
     }
@@ -2635,7 +2758,7 @@ function step1Battery(x,y,w,h,b,compact) {
       const f = document.createElement("ha-form");
       f._dataFn = typeof dataFn === "function" ? dataFn : () => dataFn;
       f.hass = this._hass;
-      f.schema = schema;
+      f.schema = localizeSchema(schema);
       f.data = f._dataFn();
       f.computeLabel = (s) => s.label || s.title || s.name;
       f.addEventListener("value-changed", (ev) => { ev.stopPropagation(); onChange(ev.detail.value); });
@@ -2654,79 +2777,110 @@ function step1Battery(x,y,w,h,b,compact) {
     }
 
     /**
-     * Picture field: thumbnail, file picker and drag-and-drop. Uploads go to
-     * HA's image integration, so no manual file copying or URLs are needed.
+     * Picture field: bundled artwork to pick from, plus upload with
+     * drag-and-drop. Uploads go to HA's image integration, so no manual file
+     * copying or URLs are needed. `opts.choices` lists the bundled artwork for
+     * this section, `opts.fallback` is what the card shows when nothing is set,
+     * and `opts.light` marks the optional light-theme picture.
      */
-    _imageField(getUrl, setUrl, fallbackIcon) {
+    _imageField(getUrl, setUrl, fallbackIcon, opts = {}) {
+      const choices = opts.choices || [];
       const box = document.createElement("div");
       box.className = "pic";
       const file = document.createElement("input");
       file.type = "file";
       file.accept = "image/png,image/jpeg,image/webp,image/svg+xml,image/gif";
+      const el = (tag, cls, text) => {
+        const n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text != null) n.textContent = text;
+        return n;
+      };
 
       const draw = (msg, isErr) => {
         const url = getUrl();
+        const builtin = url && String(url).startsWith("builtin:") ? String(url).slice(8) : null;
+        const custom = url && url !== "none" && !builtin;
+        const shown = url ? resolveImage(url) : (opts.fallback ? resolveImage(opts.fallback) : null);
         box.innerHTML = "";
-        const thumb = document.createElement("div");
-        thumb.className = "thumb";
-        if (url) {
+
+        const thumb = el("div", "thumb");
+        if (shown) {
           const img = document.createElement("img");
-          img.src = url;
+          img.src = shown;
           thumb.appendChild(img);
         } else {
           const ic = document.createElement("ha-icon");
           ic.icon = fallbackIcon || "mdi:image-outline";
           thumb.appendChild(ic);
         }
-        const body = document.createElement("div");
-        body.className = "body";
-        const h = document.createElement("div");
-        h.className = "h";
-        h.textContent = url ? "Eigenes Bild" : "Kein Bild — Symbol wird verwendet";
-        const sub = document.createElement("div");
-        sub.className = "s" + (isErr ? " err" : "");
-        sub.textContent = msg || (url ? "Ersetzt das Symbol auf der Karte." : "Datei hierher ziehen oder auswählen (max. 4 MB).");
-        body.append(h, sub);
-        const acts = document.createElement("div");
-        acts.className = "acts";
-        const pick = document.createElement("ha-button");
-        pick.textContent = url ? "Ersetzen" : "Bild wählen";
+        const head = url === "none" ? T("Nur Symbol")
+          : builtin ? `${T("Mitgelieferte Grafik")}: ${builtin}`
+          : custom ? T("Eigenes Bild")
+          : opts.light ? T("Automatisch passend zum Bild oben")
+          : opts.fallback ? T("Standard-Grafik")
+          : T("Kein Bild — Symbol wird verwendet");
+        const body = el("div", "body");
+        body.append(el("div", "h", head),
+          el("div", "s" + (isErr ? " err" : ""), msg || T(custom ? "Ersetzt das Symbol auf der Karte."
+            : "Datei hierher ziehen oder auswählen (max. 4 MB).")));
+        const acts = el("div", "acts");
+        const pick = el("ha-button", null, T(custom ? "Ersetzen" : "Eigenes Bild hochladen"));
         pick.addEventListener("click", () => file.click());
         acts.appendChild(pick);
         if (url) {
-          const del = document.createElement("ha-button");
-          del.textContent = "Entfernen";
-          del.addEventListener("click", async () => {
-            const old = getUrl();
-            setUrl(undefined);
-            draw();
-            // Other cards may still reference this HA image.
-          });
-          acts.appendChild(del);
+          // Only the reference is dropped: other cards may still use the HA image.
+          const reset = el("ha-button", null, T("Zurücksetzen"));
+          reset.addEventListener("click", () => { setUrl(undefined); draw(); });
+          acts.appendChild(reset);
         }
         body.appendChild(acts);
-        box.append(thumb, body, file);
+        const main = el("div", "main");
+        main.append(thumb, body);
+        box.appendChild(main);
+
+        if (choices.length && !opts.light) {
+          const gal = el("div", "gal");
+          const option = (value, child, title, selected) => {
+            const b = el("button", selected ? "sel" : "");
+            b.type = "button";
+            b.title = title;
+            b.appendChild(child);
+            b.addEventListener("click", () => { setUrl(value); draw(); });
+            gal.appendChild(b);
+          };
+          choices.forEach((name) => {
+            const img = document.createElement("img");
+            img.src = resolveImage("builtin:" + name);
+            const value = "builtin:" + name;
+            option(value, img, name, url === value || (!url && opts.fallback === value));
+          });
+          const ic = document.createElement("ha-icon");
+          ic.icon = fallbackIcon || "mdi:image-outline";
+          // Without a default artwork the icon already is the default, so no value is stored.
+          option(opts.fallback ? "none" : undefined, ic, T("Nur Symbol"),
+            url === "none" || (!url && !opts.fallback));
+          box.appendChild(gal);
+        }
+        box.appendChild(file);
       };
 
       const accept = async (f) => {
         if (!f) return;
-        draw("Wird hochgeladen …");
+        draw(T("Wird hochgeladen …"));
         try {
-          const previous = getUrl();
-          const url = await uploadImage(this._hass, f);
-          setUrl(url);
+          setUrl(await uploadImage(this._hass, f));
           draw();
-          // Replacing a reference does not delete a potentially shared HA image.
         } catch (err) {
           draw(err.message || String(err), true);
         }
       };
 
       file.addEventListener("change", () => accept(file.files && file.files[0]));
-      ["dragenter", "dragover"].forEach((t) => box.addEventListener(t, (ev) => {
+      ["dragenter", "dragover"].forEach((ty) => box.addEventListener(ty, (ev) => {
         ev.preventDefault(); box.classList.add("drag");
       }));
-      ["dragleave", "drop"].forEach((t) => box.addEventListener(t, (ev) => {
+      ["dragleave", "drop"].forEach((ty) => box.addEventListener(ty, (ev) => {
         ev.preventDefault(); box.classList.remove("drag");
       }));
       box.addEventListener("drop", (ev) => accept(ev.dataTransfer?.files?.[0]));
@@ -2763,7 +2917,7 @@ function step1Battery(x,y,w,h,b,compact) {
 
       const sec = document.createElement("div");
       sec.className = "sec";
-      sec.textContent = "Bereiche";
+      sec.textContent = T("Bereiche");
       root.appendChild(sec);
 
       PAGES.forEach((p) => {
@@ -2771,16 +2925,19 @@ function step1Battery(x,y,w,h,b,compact) {
         if (p.list) {
           const arr = c[p.id] || [];
           const off = p.id === "consumers" ? arr.filter((x) => x.hidden).length : 0;
-          sub = arr.length ? `${arr.length} Einträge${off ? `, ${off} ausgeblendet` : ""}` : "Noch nichts konfiguriert";
+          sub = arr.length
+            ? (LANG === "de" ? `${arr.length} Einträge${off ? `, ${off} ausgeblendet` : ""}`
+              : `${arr.length} ${arr.length === 1 ? "entry" : "entries"}${off ? `, ${off} hidden` : ""}`)
+            : T("Noch nichts konfiguriert");
         } else {
           const o = c[p.id] || {};
-          sub = o.entity ? fname(this._hass, o.entity) : "Keine Entität";
+          sub = o.entity ? fname(this._hass, o.entity) : T("Keine Entität");
           if (p.id === "header") {
             const n = ["real_import", "real_export", "temp", "humidity", "uv", "weather"].filter((k) => o[k]).length;
-            sub = n ? `${n} Angaben` : "Nichts angezeigt";
+            sub = n ? (LANG === "de" ? `${n} Angaben` : `${n} ${n === 1 ? "item" : "items"}`) : T("Nichts angezeigt");
           }
         }
-        root.appendChild(this._rowEl(p.icon, p.title, sub, () => this._nav(p.id)));
+        root.appendChild(this._rowEl(p.icon, T(p.title), sub, () => this._nav(p.id)));
       });
     }
 
@@ -2789,7 +2946,7 @@ function step1Battery(x,y,w,h,b,compact) {
       if (!page) { this._nav(null); return; }
       const head = document.createElement("div");
       head.className = "head";
-      const back = this._iconBtn("mdi:arrow-left", "Zurück", () => {
+      const back = this._iconBtn("mdi:arrow-left", T("Zurück"), () => {
         if (page.list && this._index >= 0) this._nav(page.id);
         else this._nav(null);
       });
@@ -2798,8 +2955,8 @@ function step1Battery(x,y,w,h,b,compact) {
       const t = document.createElement("div");
       t.className = "title";
       t.textContent = page.list && this._index >= 0
-        ? `${page.title} · ${this._index + 1}/${(this._config[page.id] || []).length}`
-        : page.title;
+        ? `${T(page.title)} · ${this._index + 1}/${(this._config[page.id] || []).length}`
+        : T(page.title);
       head.appendChild(t);
       root.appendChild(head);
 
@@ -2833,16 +2990,16 @@ function step1Battery(x,y,w,h,b,compact) {
               n[page.id] = { ...n[page.id] };
               if (url) n[page.id].image = url; else delete n[page.id].image;
             }),
-            (this._config[page.id] || {}).icon || page.icon));
+            (this._config[page.id] || {}).icon || page.icon, IMAGE_OPTS[page.id]));
           if (page.id === "grid" || page.id === "home") {
             const hint = document.createElement("div");
             hint.className = "hint";
-            hint.textContent = "Optionales Bild im hellen Design";
+            hint.textContent = T("Optionales Bild im hellen Design");
             root.appendChild(hint);
             root.appendChild(this._imageField(
               () => this._config[page.id].image_light,
               url => this._patch(n => { if (url) n[page.id].image_light = url; else delete n[page.id].image_light; }),
-              (this._config[page.id] || {}).icon || page.icon));
+              (this._config[page.id] || {}).icon || page.icon, { light: true }));
           }
         }
         return;
@@ -2868,16 +3025,16 @@ function step1Battery(x,y,w,h,b,compact) {
           n[page.id][i] = { ...n[page.id][i] };
           if (url) n[page.id][i].image = url; else delete n[page.id][i].image;
         }),
-        item.icon || page.icon));
+        item.icon || page.icon, IMAGE_OPTS[page.id]));
       if (page.id === "solar" || page.id === "batteries") {
         const hint = document.createElement("div");
         hint.className = "hint";
-        hint.textContent = "Optionales Bild im hellen Design";
+        hint.textContent = T("Optionales Bild im hellen Design");
         root.appendChild(hint);
         root.appendChild(this._imageField(
           () => this._config[page.id][i].image_light,
           url => this._patch(n => { if (url) n[page.id][i].image_light = url; else delete n[page.id][i].image_light; }),
-          item.icon || page.icon));
+          item.icon || page.icon, { light: true }));
       }
     }
 
@@ -2886,14 +3043,14 @@ function step1Battery(x,y,w,h,b,compact) {
       const hint = document.createElement("div");
       hint.className = "hint";
       hint.textContent = page.id === "consumers"
-        ? "Reihenfolge bestimmt die Platzierung: die ersten füllen die rechte Spalte, der Rest die Reihen darunter."
-        : "Mit den Pfeilen sortieren, mit dem Stift bearbeiten.";
+        ? T("Reihenfolge bestimmt die Platzierung: die ersten füllen die rechte Spalte, der Rest die Reihen darunter.")
+        : T("Mit den Pfeilen sortieren, mit dem Stift bearbeiten.");
       root.appendChild(hint);
 
       if (!arr.length) {
         const e = document.createElement("div");
         e.className = "empty";
-        e.textContent = "Noch nichts konfiguriert — unten eine Entität auswählen.";
+        e.textContent = T("Noch nichts konfiguriert — unten eine Entität auswählen.");
         root.appendChild(e);
       }
 
@@ -2913,13 +3070,13 @@ function step1Battery(x,y,w,h,b,compact) {
         btns.className = "btns";
         if (page.id === "consumers") {
           btns.appendChild(this._iconBtn(x.hidden ? "mdi:eye-off" : "mdi:eye",
-            x.hidden ? "Einblenden" : "Ausblenden",
+            T(x.hidden ? "Einblenden" : "Ausblenden"),
             () => this._patch((n) => { n[page.id][i].hidden = !n[page.id][i].hidden; })));
         }
-        btns.appendChild(this._iconBtn("mdi:arrow-up", "Nach oben", () => this._move(page.id, i, -1), i === 0));
-        btns.appendChild(this._iconBtn("mdi:arrow-down", "Nach unten", () => this._move(page.id, i, 1), i === arr.length - 1));
-        btns.appendChild(this._iconBtn("mdi:pencil", "Bearbeiten", () => this._nav(page.id, i)));
-        btns.appendChild(this._iconBtn("mdi:close", "Entfernen",
+        btns.appendChild(this._iconBtn("mdi:arrow-up", T("Nach oben"), () => this._move(page.id, i, -1), i === 0));
+        btns.appendChild(this._iconBtn("mdi:arrow-down", T("Nach unten"), () => this._move(page.id, i, 1), i === arr.length - 1));
+        btns.appendChild(this._iconBtn("mdi:pencil", T("Bearbeiten"), () => this._nav(page.id, i)));
+        btns.appendChild(this._iconBtn("mdi:close", T("Entfernen"),
           () => this._patch((n) => { n[page.id].splice(i, 1); })));
         d.appendChild(btns);
         root.appendChild(d);
@@ -2928,7 +3085,7 @@ function step1Battery(x,y,w,h,b,compact) {
       const picker = document.createElement("ha-entity-picker");
       picker.className = "add";
       picker.hass = this._hass;
-      picker.label = "Hinzufügen";
+      picker.label = T("Hinzufügen");
       picker.allowCustomEntity = true;
       picker.includeDomains = ["sensor", "input_number", "number"];
       picker.addEventListener("value-changed", (ev) => {
@@ -2947,7 +3104,7 @@ function step1Battery(x,y,w,h,b,compact) {
         const bulk = document.createElement("div");
         bulk.className = "hint";
         bulk.style.marginTop = "6px";
-        bulk.textContent = "Tipp: Steckdosen-Sensoren heißen meist „sensor.steckdose_…_power“.";
+        bulk.textContent = T("Tipp: Steckdosen-Sensoren heißen meist „sensor.steckdose_…_power“.");
         root.appendChild(bulk);
       }
     }
@@ -2957,8 +3114,8 @@ function step1Battery(x,y,w,h,b,compact) {
       const clean = nm.replace(/^Steckdose\s+/i, "").replace(/\s*(Leistung|Power)$/i, "").trim();
       switch (page.id) {
         case "solar": return { entity, name: clean || "PV", icon: "mdi:solar-panel" };
-        case "batteries": return { soc: entity, name: clean || "Speicher", icon: "mdi:battery-high" };
-        case "climate": return { entity, name: clean || "Klima", icon: "mdi:air-conditioner" };
+        case "batteries": return { soc: entity, name: clean || T("Speicher"), icon: "mdi:battery-high" };
+        case "climate": return { entity, name: clean || T("Klima"), icon: "mdi:air-conditioner" };
         default: return { entity, name: clean || entity, icon: "mdi:power-plug", color: "#7fd4ff", unit: "W" };
       }
     }
@@ -2981,7 +3138,7 @@ function step1Battery(x,y,w,h,b,compact) {
       this._config = config;
       if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     }
-    set hass(hass) { this._hass = hass; this._render(); }
+    set hass(hass) { this._hass = hass; setLang(hass); this._render(); }
     getCardSize() { return 4; }
 
     _render() {
@@ -2992,7 +3149,7 @@ function step1Battery(x,y,w,h,b,compact) {
       const level = soc == null ? 0 : clamp(soc, 0, 100);
       const accent = c.accent || "#33d6ff";
       const accent2 = c.accent2 || "#32e2ad";
-      const state = power == null ? "Keine Daten" : power < -5 ? "Lädt" : power > 5 ? "Entlädt" : "Bereit";
+      const state = T(power == null ? "Keine Daten" : power < -5 ? "Lädt" : power > 5 ? "Entlädt" : "Bereit");
       const details = (c.details || []).map((d) => {
         const entity = this._hass.states[d.entity];
         const value = entity ? entity.state : "–";
@@ -3040,7 +3197,7 @@ function step1Battery(x,y,w,h,b,compact) {
       <ha-card>
         <div class="top">
           <div class="icon"><ha-icon icon="${esc(c.icon || "mdi:battery-high")}"></ha-icon></div>
-          <div><div class="name">${esc(c.name || "Batterie")}</div><div class="state">${esc(state)} · ${esc(fmtW(power))}</div></div>
+          <div><div class="name">${esc(c.name || T("Batterie"))}</div><div class="state">${esc(state)} · ${esc(fmtW(power))}</div></div>
           <div class="soc">${soc == null ? "–" : Math.round(soc)}<small>%</small></div>
         </div>
         <div class="bar"><div></div></div>
@@ -3054,12 +3211,12 @@ function step1Battery(x,y,w,h,b,compact) {
   window.customCards = window.customCards || [];
   if (!window.customCards.some(c => c.type === "glass-energy-flow-card")) window.customCards.push({
     type: "glass-energy-flow-card", name: "Glass Energy Flow Card",
-    description: "Energiefluss mit PV, Speicher, Netz, Klima, Verbrauchern und PV-Prognose.", preview: false, documentationURL: "https://github.com/bh4it/glass-energy-flow-card"
+    description: T("Energiefluss mit PV, Speicher, Netz, Klima, Verbrauchern und PV-Prognose."), preview: false, documentationURL: "https://github.com/bh4it/glass-energy-flow-card"
   });
   if (!customElements.get("glass-energy-battery-card")) customElements.define("glass-energy-battery-card", GlassEnergyBatteryCard);
   if (!window.customCards.some(c => c.type === "glass-energy-battery-card")) window.customCards.push({
     type: "glass-energy-battery-card", name: "Glass Energy Battery Card",
-    description: "Akku mit Ladestand, Leistung und Kennzahlen im selben Glas-Look.", preview: false, documentationURL: "https://github.com/bh4it/glass-energy-flow-card"
+    description: T("Akku mit Ladestand, Leistung und Kennzahlen im selben Glas-Look."), preview: false, documentationURL: "https://github.com/bh4it/glass-energy-flow-card"
   });
   console.info(`%c GLASS-ENERGY-FLOW-CARD %c v${CARD_VERSION} `,
     "background:#0a1122;color:#7fd4ff;padding:2px 6px;border-radius:4px 0 0 4px",

@@ -1,0 +1,16 @@
+{
+  "name": "glass-energy-flow-card",
+  "private": true,
+  "description": "Dev tooling only: the card itself ships as dist/glass-energy-flow-card.js with no build step.",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "test": "node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.1.0",
+    "globals": "^17.0.0",
+    "playwright": "1.56.1"
+  }
+}

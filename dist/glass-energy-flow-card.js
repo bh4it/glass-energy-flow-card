@@ -769,6 +769,10 @@
       pvBottom = pad + pvH;
     }
 
+    // The side panels start a little below the PV band, so the band reads as
+    // the top of the drawing where the power comes from.
+    const sideTop = pad + (pvNode ? Math.round(clamp(pvNode.h * 0.3, 30, 70)) : 0);
+
     // ---- house ---------------------------------------------------------
     const houseY = pvBottom + (nS ? lane + 62 : 70) + houseR;
     const house = { t: "house", x: centerX, y: houseY, r: houseR };
@@ -797,7 +801,7 @@
       const climH = 42 + d.climate.length * (climCellH + 10) - 10 + 10;
       // Top-aligned with the right-hand column (vehicle panel or first tile),
       // so both sides start on one line.
-      const climY = pad;
+      const climY = sideTop;
       nodes.push({ t: "climate", x: leftX, y: climY, w: leftW, h: climH, cellH: climCellH });
       // One feed leaves the house high on its left flank, clear of the grid
       // wire, and climbs a lane in the gap beside the column, so it never has
@@ -857,7 +861,7 @@
     const tileX = climX + Math.round((climW - tileW) / 2);
     const stubs = [];
 
-    let rightY = pad, rightEdgeX = climX;
+    let rightY = sideTop, rightEdgeX = climX;
     // ---- electric vehicles, top right above the climate group -----------
     // Wider than the column when the PV band leaves room, so the car stays legible.
     if (d.vehicles.length) {
@@ -889,7 +893,7 @@
       nodes.push({ t: "load", i, x: tileX, y, w: tileW, h: tileH });
       stubs.push({ y: y + tileH / 2, x: tileX, ref: ["consumers", i] });
     }
-    const rightBottom = nRight ? rightY + nRight * (tileH + gap) - gap : (rightY > pad ? rightY - 16 : pad);
+    const rightBottom = nRight ? rightY + nRight * (tileH + gap) - gap : (rightY > sideTop ? rightY - 16 : pad);
 
     if (stubs.length) {
       distribution.right = { x: trunkX, targets: stubs };
@@ -1362,6 +1366,11 @@
     .glass { fill: var(--sc-tile); stroke: var(--sc-tile-line); stroke-width:1; }
     .pv-group { fill: var(--sc-pv-fill); stroke: var(--sc-pv-line); stroke-width:1.3;
                 filter: var(--sc-pv-glow); }
+    /* While the panels produce, the PV band glows warm like sunlight. */
+    .pv-group.producing { stroke: rgba(255,176,64,.75);
+      filter: drop-shadow(0 0 10px rgba(255,150,40,.45)) drop-shadow(0 0 26px rgba(255,140,30,.22));
+      animation: pvSun 4s ease-in-out infinite; }
+    @keyframes pvSun { 50% { filter: drop-shadow(0 0 14px rgba(255,160,50,.6)) drop-shadow(0 0 34px rgba(255,140,30,.3)); } }
     .pv-cell { fill: var(--sc-cell-fill); stroke: var(--sc-pv-line); stroke-width:1; opacity:.8; }
     .pv-title { fill:var(--sc-ink); font-size:14px; font-weight:650; letter-spacing:.13em; }
     .pv-total { fill:var(--sc-ink); font-size:20px; font-weight:750; stroke:var(--sc-halo); stroke-width:4px; }
@@ -1464,7 +1473,7 @@
     .pulse { opacity:1; }
     .clickable { cursor:pointer; }
     @media (prefers-reduced-motion: reduce) {
-      .dash, .run, .wire-core.live, .pulse { animation:none; }
+      .dash, .run, .wire-core.live, .pulse, .pv-group.producing { animation:none; }
     }`;
 
   // -------------------------------------------------------------- svg pieces
@@ -2401,7 +2410,7 @@ function step1Battery(x,y,w,h,b,compact) {
         <stop offset="1" stop-color="${light ? "#d8e9f5" : "#112240"}" stop-opacity=".75"/>
       </linearGradient>
     </defs>
-    <rect class="pv-group" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="18"/>
+    <rect class="pv-group${d.pvTotal > 5 ? " producing" : ""}" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="18"/>
     <text class="pv-title" x="${n.x + 18}" y="${n.y + 26}">${T("PV-TOTAL")}</text>`;
   if (d.pvEnergy.entity) {
     const label = T("Ertrag heute") + " " + fmtPvEnergy(d.pvEnergy.value);

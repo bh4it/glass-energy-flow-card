@@ -294,6 +294,7 @@ grid_options:
 ## Glass Energy Battery Card
 
 A single battery in the same look – with state of charge, power and metrics of your choice.
+It has its own visual editor: pick the sensors, colours and metric tiles by clicking, or use YAML:
 
 ![Glass Energy Battery Card](docs/battery-en.png)
 

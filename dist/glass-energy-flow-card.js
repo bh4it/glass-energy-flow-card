@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.3.1";
+  const CARD_VERSION = "1.4.0";
 
   // ------------------------------------------------------------------ i18n
   // The UI follows Home Assistant's language: German for "de", English
@@ -191,6 +191,14 @@
     "Entfernen": "Remove",
     "Hinzufügen": "Add",
     "Tipp: Steckdosen-Sensoren heißen meist „sensor.steckdose_…_power“.": "Tip: smart plug sensors are usually named “sensor.…_power”.",
+    "Leistung (W, negativ = lädt)": "Power (W, negative = charging)",
+    "Akzentfarbe (z. B. #33d6ff)": "Accent colour (e.g. #33d6ff)",
+    "Zweite Akzentfarbe für den Verlauf (z. B. #32e2ad)": "Second accent colour for the gradient (e.g. #32e2ad)",
+    "Kennzahlen": "Metrics",
+    "Kennzahl": "Metric",
+    "Name (optional, sonst vom Sensor)": "Name (optional, otherwise from the sensor)",
+    "Kennzahlen erscheinen als Kacheln unter dem Balken. Mit den Pfeilen sortieren, mit dem Stift bearbeiten.": "Metrics appear as tiles below the bar. Sort with the arrows, edit with the pencil.",
+    "Noch keine Kennzahlen — unten eine Entität auswählen.": "No metrics yet — pick an entity below.",
   };
   const T = (s) => (LANG === "de" ? s : (EN[s] ?? s));
 
@@ -3621,6 +3629,24 @@ function step1Battery(x,y,w,h,b,compact) {
 
 
   class GlassEnergyBatteryCard extends HTMLElement {
+    static getConfigElement() { return document.createElement("glass-energy-battery-card-editor"); }
+
+    static getStubConfig(hass) {
+      setLang(hass);
+      const ids = Object.keys(hass?.states || {}).filter((id) => id.startsWith("sensor."));
+      const attr = (id) => hass.states[id].attributes || {};
+      const store = /(batter|speicher|akku)/i;
+      // Prefer a storage sensor by name, then anything HA calls a battery level,
+      // so the preview has a charge level to show straight away.
+      const soc = ids.find((id) => store.test(id) && /(soc|level|ladestand|state_of_charge|charge)/i.test(id))
+        || ids.find((id) => attr(id).device_class === "battery")
+        || ids.find((id) => attr(id).unit_of_measurement === "%") || "";
+      const power = ids.find((id) => store.test(id) && /(power|leistung)/i.test(id)) || "";
+      const cfg = { name: T("Batterie"), entity: soc, icon: "mdi:battery-high" };
+      if (power) cfg.power = power;
+      return cfg;
+    }
+
     setConfig(config) {
       if (!config.entity) throw new Error("entity is required");
       this._config = config;
@@ -3694,6 +3720,131 @@ function step1Battery(x,y,w,h,b,compact) {
     }
   }
 
+  const BATTERY_SCHEMA = {
+    main: [
+      { name: "entity", label: "Ladestand (%)", selector: SEL.power },
+      { name: "power", label: "Leistung (W, negativ = lädt)", selector: SEL.power },
+      { type: "grid", column_min_width: "220px", schema: [
+        { name: "name", label: "Name", selector: SEL.text },
+        { name: "icon", label: "Symbol", selector: SEL.icon },
+        { name: "accent", label: "Akzentfarbe (z. B. #33d6ff)", selector: SEL.color },
+        { name: "accent2", label: "Zweite Akzentfarbe für den Verlauf (z. B. #32e2ad)", selector: SEL.color },
+      ] },
+    ],
+    detail: [
+      { name: "entity", label: "Entität", selector: SEL.anyEntity },
+      { type: "grid", column_min_width: "220px", schema: [
+        { name: "name", label: "Name (optional, sonst vom Sensor)", selector: SEL.text },
+        { name: "icon", label: "Symbol (optional)", selector: SEL.icon },
+      ] },
+    ],
+  };
+
+  // Empty form fields come back as "" or undefined; leaving them out keeps the YAML tidy.
+  const compact = (o) => {
+    const x = { ...o };
+    Object.keys(x).forEach((k) => { if (x[k] === "" || x[k] == null) delete x[k]; });
+    return x;
+  };
+
+  /**
+   * Editor for the battery card. It borrows the plumbing of the main editor
+   * (forms, rows, buttons, styles) and only swaps in its own pages: the card
+   * settings with the metric list, and one page per metric.
+   */
+  class GlassEnergyBatteryCardEditor extends GlassEnergyFlowCardEditor {
+    setConfig(config) {
+      this._config = { ...(config || {}) };
+      this._render();
+    }
+
+    _renderOverview(root) {
+      root.appendChild(this._form(BATTERY_SCHEMA.main, () => ({ ...this._config }), (v) => {
+        this._patch((n) => {
+          ["entity", "power", "name", "icon", "accent", "accent2"].forEach((k) => {
+            if (v[k] === "" || v[k] == null) delete n[k]; else n[k] = v[k];
+          });
+        });
+      }));
+
+      const sec = document.createElement("div");
+      sec.className = "sec";
+      sec.textContent = T("Kennzahlen");
+      root.appendChild(sec);
+
+      const hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = T("Kennzahlen erscheinen als Kacheln unter dem Balken. Mit den Pfeilen sortieren, mit dem Stift bearbeiten.");
+      root.appendChild(hint);
+
+      const arr = this._config.details || [];
+      if (!arr.length) {
+        const e = document.createElement("div");
+        e.className = "empty";
+        e.textContent = T("Noch keine Kennzahlen — unten eine Entität auswählen.");
+        root.appendChild(e);
+      }
+      arr.forEach((x, i) => {
+        const d = document.createElement("div");
+        d.className = "row item";
+        const ic = document.createElement("ha-icon");
+        ic.icon = x.icon || "mdi:circle-small";
+        d.appendChild(ic);
+        const txt = document.createElement("div");
+        txt.className = "txt";
+        txt.innerHTML = `<div class="h">${esc(x.name || fname(this._hass, x.entity))}</div><div class="s">${esc(x.entity || "")}</div>`;
+        txt.addEventListener("click", () => this._nav("details", i));
+        d.appendChild(txt);
+        const btns = document.createElement("div");
+        btns.className = "btns";
+        btns.appendChild(this._iconBtn("mdi:arrow-up", T("Nach oben"), () => this._move("details", i, -1), i === 0));
+        btns.appendChild(this._iconBtn("mdi:arrow-down", T("Nach unten"), () => this._move("details", i, 1), i === arr.length - 1));
+        btns.appendChild(this._iconBtn("mdi:pencil", T("Bearbeiten"), () => this._nav("details", i)));
+        btns.appendChild(this._iconBtn("mdi:close", T("Entfernen"), () => {
+          this._patch((n) => {
+            n.details.splice(i, 1);
+            if (!n.details.length) delete n.details;
+          });
+          this._render(true);
+        }));
+        d.appendChild(btns);
+        root.appendChild(d);
+      });
+
+      const picker = document.createElement("ha-entity-picker");
+      picker.className = "add";
+      picker.hass = this._hass;
+      picker.label = T("Hinzufügen");
+      picker.allowCustomEntity = true;
+      picker.addEventListener("value-changed", (ev) => {
+        const id = ev.detail.value;
+        if (!id) return;
+        ev.target.value = "";
+        this._patch((n) => { n.details = (n.details || []).concat([{ entity: id }]); });
+        this._render(true);
+      });
+      root.appendChild(picker);
+    }
+
+    _renderPage(root) {
+      const arr = this._config.details || [];
+      const i = this._index;
+      if (this._page !== "details" || !arr[i]) { this._nav(null); return; }
+      const head = document.createElement("div");
+      head.className = "head";
+      const back = this._iconBtn("mdi:arrow-left", T("Zurück"), () => this._nav(null));
+      back.className = "back";
+      head.appendChild(back);
+      const t = document.createElement("div");
+      t.className = "title";
+      t.textContent = `${T("Kennzahl")} · ${i + 1}/${arr.length}`;
+      head.appendChild(t);
+      root.appendChild(head);
+      root.appendChild(this._form(BATTERY_SCHEMA.detail, () => ({ ...(this._config.details[i] || {}) }),
+        (v) => this._patch((n) => { n.details[i] = compact({ ...n.details[i], ...v }); })));
+    }
+  }
+
   if (!customElements.get("glass-energy-flow-card")) customElements.define("glass-energy-flow-card", GlassEnergyFlowCard);
   if (!customElements.get("glass-energy-flow-card-editor")) customElements.define("glass-energy-flow-card-editor", GlassEnergyFlowCardEditor);
   window.customCards = window.customCards || [];
@@ -3702,6 +3853,7 @@ function step1Battery(x,y,w,h,b,compact) {
     description: T("Energiefluss mit PV, Speicher, Netz, Klima, Verbrauchern und PV-Prognose."), preview: false, documentationURL: "https://github.com/bh4it/glass-energy-flow-card"
   });
   if (!customElements.get("glass-energy-battery-card")) customElements.define("glass-energy-battery-card", GlassEnergyBatteryCard);
+  if (!customElements.get("glass-energy-battery-card-editor")) customElements.define("glass-energy-battery-card-editor", GlassEnergyBatteryCardEditor);
   if (!window.customCards.some(c => c.type === "glass-energy-battery-card")) window.customCards.push({
     type: "glass-energy-battery-card", name: "Glass Energy Battery Card",
     description: T("Akku mit Ladestand, Leistung und Kennzahlen im selben Glas-Look."), preview: false, documentationURL: "https://github.com/bh4it/glass-energy-flow-card"

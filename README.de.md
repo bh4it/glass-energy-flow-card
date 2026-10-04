@@ -296,6 +296,7 @@ grid_options:
 ## Glass Energy Battery Card
 
 Eine einzelne Batterie im selben Look – mit Ladestand, Leistung und frei wählbaren Kennzahlen.
+Sie hat einen eigenen visuellen Editor: Sensoren, Farben und Kennzahl-Kacheln per Klick wählen, oder per YAML:
 
 ![Glass Energy Battery Card](docs/battery-de.png)
 

@@ -795,8 +795,9 @@
     let leftBottom = gridY;
     if (climLeft) {
       const climH = 42 + d.climate.length * (climCellH + 10) - 10 + 10;
-      // As high as the PV band allows, but never pushing the grid off its line.
-      const climY = Math.max(pad, Math.min(gridY - 16 - climH, pvBottom - climH));
+      // Top-aligned with the right-hand column (vehicle panel or first tile),
+      // so both sides start on one line.
+      const climY = pad;
       nodes.push({ t: "climate", x: leftX, y: climY, w: leftW, h: climH, cellH: climCellH });
       // One feed leaves the house high on its left flank, clear of the grid
       // wire, and climbs a lane in the gap beside the column, so it never has

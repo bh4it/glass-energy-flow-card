@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.3.1";
+  const CARD_VERSION = "1.3.2";
 
   // ------------------------------------------------------------------ i18n
   // The UI follows Home Assistant's language: German for "de", English
@@ -406,8 +406,10 @@
     cfg.theme = Object.assign({}, preset, cfg.theme);
     if (cfg.theme.spread == null) cfg.theme.spread = preset.spread;
     cfg.theme.spread = clamp(Number(cfg.theme.spread) || preset.spread, 20, 140);
-    cfg.theme.tile = clamp(Number(cfg.theme.tile) == null ? preset.tile
-                                                         : Number(cfg.theme.tile), 0, 90);
+    // 0 is a valid tile value, so only a missing or non-numeric one falls back
+    const tile = Number(cfg.theme.tile);
+    cfg.theme.tile = clamp(cfg.theme.tile == null || cfg.theme.tile === "" || !Number.isFinite(tile)
+      ? preset.tile : tile, 0, 90);
     if (cfg.theme.mode !== "hell" && cfg.theme.mode !== "dunkel") {
       cfg.theme.mode = preset.mode || "dunkel";
     }
@@ -1618,21 +1620,6 @@
     </g>`;
   }
 
-  /** Largest font size at which `txt` still fits into `maxW`. */
-  function fitFont(txt, maxW, base, min) {
-    const t = String(txt == null ? "" : txt);
-    if (!t) return base;
-    // Measured against the rendered result: the digits and letters that appear
-    // here average about 0.44 em; 0.48 leaves a little headroom.
-    const need = t.length * 0.48;
-    return clamp(Math.floor(maxW / need), min || 9, base);
-  }
-
-  /**
-   * Box a centred label occupies, used to cut the wire out from underneath it.
-   * The width follows the same 0.48 em per character the font sizing uses, with
-   * a little air on each side so the cable does not graze the digits.
-   */
   /**
    * Width of a piece of text in the card's own font, measured rather than
    * estimated. A per-character average is fine for shrinking a value until it
@@ -2260,7 +2247,7 @@ function step1Battery(x,y,w,h,b,compact) {
           this._syncPhases(stage);
         }
       }
-      this._header(d);
+      this._header();
     }
 
     /**
@@ -2432,7 +2419,7 @@ function step1Battery(x,y,w,h,b,compact) {
       return s + `</g>`;
     }
 
-    _header(d) {
+    _header() {
       const hass = this._hass, h = this._config.header || {};
       const set = (id, txt) => { const el = this.shadowRoot.getElementById(id); if (el) el.textContent = txt; };
       if (h.real_import) set("realImport", fmtMeter(num(hass, h.real_import)));
@@ -3083,13 +3070,6 @@ function step1Battery(x,y,w,h,b,compact) {
     if (!res.ok) throw new Error(`${T("Upload fehlgeschlagen")} (HTTP ${res.status})`);
     const data = await res.json();
     return `/api/image/serve/${data.id}/original`;
-  }
-
-  /** Remove a previously uploaded picture so it does not linger on disk. */
-  async function deleteImage(hass, url) {
-    const m = /^\/api\/image\/serve\/([0-9a-f]+)\//.exec(url || "");
-    if (!m) return;                                  // external URL: leave alone
-    try { await hass.callWS({ type: "image/delete", image_id: m[1] }); } catch (e) { /* ignore */ }
   }
 
   const EDITOR_CSS = `

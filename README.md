@@ -287,8 +287,9 @@ grid_options:
 | `home` | `entity` (W), `icon`, `image`, `image_light` |
 | `vehicles[]` | `name`, `soc` (%), `power` (W), `plug`, `range` (km), `time_to_full` (min), `target_soc`, `threshold` (W, default 50), `invert`, `icon`, `image`, `image_plugged`, `image_fit` (`cover`/`contain`), `metrics[]` (`entity`, `icon`, `unit`; up to 6) |
 | `climate[]` | `name`, `entity` (W), `state_entity`, `icon`, `image`, `metrics[]` (`label`, `entity`, `unit`) |
-| `consumers[]` | `name`, `entity`, `unit`, `icon`, `color`, `image`, `hidden`, `secondary` (`entity`, `label`, `unit`) |
-| `layout` | `mode`: `auto` (default), `wide`, `mid`, `narrow`; breakpoints `wide_min` (1100 px), `mid_min` (680 px) |
+| `consumers_auto_hide` | `true` (default): consumers that draw nothing (at or below their `threshold`, default 5 W) are hidden and their space goes to the rest; they come back as soon as they draw power and stay for a minute after they stop. `false` shows every consumer |
+| `consumers[]` | `name`, `entity`, `unit`, `icon`, `color`, `image`, `hidden`, `always_show` (never auto-hide this one), `threshold` (W), `secondary` (`entity`, `label`, `unit`) |
+| `layout` | `mode`: `auto` (default), `wide`, `mid`, `narrow`; breakpoints `wide_min` (1100 px), `mid_min` (680 px); `climate`: `left` (default, above the grid) or `right` (above the consumers); `text_scale`: extra text size factor, e.g. `1.15` (key figures already grow automatically when the card is drawn small) |
 | `theme` | `preset`: `blau` (blue), `dunkel` (night blue), `mitternacht` (midnight), `petrol`, `violett` (violet), `grafit` (graphite), `hell` (light), `hell-blau` (light blue), `hell-violett` (light violet); `wires`: `puls` (pulse), `strich` (dashes), `ruhig` (static); fine-tune with `center`, `edge`, `spread`, `tile` |
 
 ## Glass Energy Battery Card

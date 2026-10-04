@@ -156,6 +156,14 @@
     "Farbe (z. B. #4dd0e1)": "Colour (e.g. #4dd0e1)",
     "Ausblenden": "Hide",
     "Bei 0 W ausblenden": "Hide at 0 W",
+    "Immer anzeigen": "Always show",
+    "Nur bei Verbrauch anzeigen": "Show only while drawing power",
+    "Verbraucher ohne Verbrauch ausblenden": "Hide consumers that draw no power",
+    "Klima-Position": "Climate position",
+    "Links über dem Netz (Standard)": "Left, above the grid (default)",
+    "Rechts über den Verbrauchern": "Right, above the consumers",
+    "Schriftgröße (%)": "Text size (%)",
+    "Ohne Verbrauch werden Verbraucher ausgeblendet; mit der Pinnadel bleibt einer immer sichtbar.": "Consumers without draw are hidden; pin one to keep it visible.",
     "Zweite Zeile (z. B. Tagesverbrauch)": "Second line (e.g. daily usage)",
     "Entität für die zweite Zeile": "Entity for the second line",
     "Beschriftung (z. B. Heute)": "Label (e.g. Today)",
@@ -777,10 +785,44 @@
       });
     }
 
-    // ---- grid + storage on the left -------------------------------------
+    // ---- climate, grid + storage on the left ------------------------------
     const gridW = leftW, gridH = 168;
-    const gridY = houseY - Math.round(gridH / 2) - 26;
+    // Climate sits in the left column above the grid unless layout.climate is
+    // "right": that frees the right column for consumers and keeps the card low.
+    const climLeft = P.climate !== "right" && d.climate.length > 0;
+    const climCellH = 86;
+    let gridY = houseY - Math.round(gridH / 2) - 26;
     let leftBottom = gridY;
+    if (climLeft) {
+      const climH = 42 + d.climate.length * (climCellH + 10) - 10 + 10;
+      // As high as the PV band allows, but never pushing the grid off its line.
+      const climY = Math.max(pad, Math.min(gridY - 16 - climH, pvBottom - climH));
+      nodes.push({ t: "climate", x: leftX, y: climY, w: leftW, h: climH, cellH: climCellH });
+      // One feed leaves the house high on its left flank, clear of the grid
+      // wire, and climbs a lane in the gap beside the column, so it never has
+      // to cross the PV band. Each unit branches off that lane.
+      const off = Math.round(houseR * 0.8);
+      const gapW = pvNode ? pvNode.x - (leftX + leftW) : 40;
+      const laneX = leftX + leftW + Math.min(20, Math.round(gapW / 2));
+      const all = d.climate.map((c, i) => ["climate", i]);
+      const cellY = (i) => climY + 42 + i * (climCellH + 10) + climCellH / 2;
+      let from = { x: laneX, y: houseY - off };
+      let parent = links.length;
+      links.push({ from: { x: Math.round(centerX - Math.sqrt(houseR * houseR - off * off)), y: houseY - off },
+                   to: from, straight: true, flow: { type: "consumer", refs: all } });
+      for (let i = d.climate.length - 1; i >= 0; i--) {
+        const j = { x: laneX, y: cellY(i) };
+        if (j.y !== from.y) {
+          links.push({ from, to: j, straight: true, parent, flow: { type: "consumer", refs: all.slice(0, i + 1) } });
+          parent = links.length - 1;
+        }
+        links.push({ from: j, to: { x: leftX + leftW, y: j.y }, straight: true, parent,
+                     flow: { type: "consumer", refs: [all[i]] } });
+        from = j;
+      }
+      gridY = Math.max(gridY, climY + climH + 16);
+      leftBottom = climY + climH;
+    }
     if (d.grid.entity) {
       nodes.push({ t: "grid", x: leftX, y: gridY, w: gridW, h: gridH });
       links.push({
@@ -830,8 +872,8 @@
       rightEdgeX = Math.min(climX, evX);
       rightY += evH + 16;
     }
-    if (d.climate.length) {
-      const cellH = 80;
+    if (d.climate.length && !climLeft) {
+      const cellH = climCellH;
       const climH = 42 + d.climate.length * (cellH + 10) - 10 + 10;
       nodes.push({ t: "climate", x: climX, y: rightY, w: climW, h: climH, cellH });
       d.climate.forEach((c, i) => {
@@ -1091,6 +1133,15 @@
       });
     }
     return L;
+  }
+
+  // A consumer that just switched off stays on screen for a minute, so devices
+  // that cycle (fridge, pump) don't make the whole layout jump back and forth.
+  const IDLE_HOLD_MS = 60000;
+  function idleFor(seen, entity, idle, now) {
+    if (!idle) { seen.set(entity, now); return false; }
+    const last = seen.get(entity);
+    return last == null || now - last > IDLE_HOLD_MS;
   }
 
   function liveFlow(link, data) {
@@ -1501,6 +1552,11 @@
   // Whether the light scheme is active. Read by icon()/artwork(), which are
   // plain functions outside the element and so cannot reach the config.
   let LIGHT = false;
+  // Text boost for the current frame. The drawing is scaled to the card width,
+  // so on a tablet or a narrow column every font shrinks with it; the key
+  // figures are drawn larger in drawing units to stay readable on screen.
+  let TB = 1;
+  const fz = (px, cap) => Math.round(px * Math.min(TB, cap || 9) * 10) / 10;
 
   /** Fit a label to the tile width by shrinking the font, then ellipsising. */
   function fitText(txt, maxW, fontSize) {
@@ -1598,9 +1654,9 @@
     const cx = n.x + n.w / 2;
     const k = o.scale == null ? 1 : o.scale;             // tile scale factor
     const size = Math.round((o.iconSize || 28) * k);
-    const fLabel = Math.max(9, Math.round(13 * k));
-    const fVal = Math.max(11, Math.round(17 * k));
-    const fSub = Math.max(8, Math.round(12 * k));
+    const fLabel = fz(Math.max(9, Math.round(13 * k)), 1.3);
+    const fVal = fz(Math.max(11, Math.round(17 * k)));
+    const fSub = fz(Math.max(8, Math.round(12 * k)), 1.3);
     const padTop = Math.round(8 * k);
     const inner = n.w - 12;
     const subY = n.y + n.h - Math.round(8 * k);
@@ -1689,7 +1745,7 @@ function step1Fit(text, width, size, weight) {
 
 function step1Grid(n,d,config) {
   const compact=n.compact;
-  const size=compact?16:26, labelSize=compact?11:16;
+  const size=fz(compact?16:26,1.3), labelSize=fz(compact?11:16,1.25);
   const value=fmtW(d.gridDisplayValue);
   const name=d.gridDisplayValue == null ? T("Netz nicht verfügbar")
     : d.gridDisplayValue > 0 ? T("Netzbezug")
@@ -1700,17 +1756,17 @@ function step1Grid(n,d,config) {
   const body=`<g class="clickable step1-grid" data-entity="${esc(config.entity)}">
     <rect class="glass" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="16"/>
     ${artwork(n.x+12,n.y+9,imgH,image,config.icon||"mdi:transmission-tower", "#7fd4ff",undefined,imgW)}
-    <text class="step1-grid-label" x="${left}" y="${n.y+(compact?24:31)}"
+    <text class="step1-grid-label" x="${left}" y="${n.y+Math.round(labelSize*(compact?1.9:1.85))}"
       style="font-size:${step1Fit(name,room,labelSize,600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(name)}</text>
-    <text class="step1-grid-value" x="${left}" y="${n.y+(compact?46:65)}"
+    <text class="step1-grid-value" x="${left}" y="${n.y+Math.round(labelSize*(compact?1.9:1.85)+size*(compact?1.3:1.25))}"
       style="font-size:${step1Fit(value,room,size,700)}px;font-weight:700">${esc(value)}</text>
     ${!compact?`<path d="M ${n.x+16} ${n.y+113} H ${n.x+n.w-16}" stroke="var(--sc-tile-line)" stroke-width="1"/>`:""}
-    ${config.import_today?`<text class="step1-grid-daily" x="${n.x+14}" y="${n.y+(compact?90:134)}" style="font-size:${compact?9:12}px;fill:var(--sc-ink-soft)">${T("Bezug heute")}</text>
+    ${config.import_today?`<text class="step1-grid-daily" x="${n.x+14}" y="${n.y+(compact?90:134)}" style="font-size:${(compact?9:fz(12,1.2))}px;fill:var(--sc-ink-soft)">${T("Bezug heute")}</text>
       <text x="${n.x+n.w-14}" y="${n.y+(compact?90:134)}" text-anchor="end"
-       style="font-size:${compact?10:13}px">${esc(fmtKWh(d.gridImportToday))}</text>`:""}
-    ${config.export_today?`<text class="step1-grid-daily" x="${n.x+14}" y="${n.y+(compact?109:155)}" style="font-size:${compact?9:12}px;fill:var(--sc-ink-soft)">${T("Einspeisung")}</text>
+       style="font-size:${(compact?10:fz(13,1.2))}px">${esc(fmtKWh(d.gridImportToday))}</text>`:""}
+    ${config.export_today?`<text class="step1-grid-daily" x="${n.x+14}" y="${n.y+(compact?109:155)}" style="font-size:${(compact?9:fz(12,1.2))}px;fill:var(--sc-ink-soft)">${T("Einspeisung")}</text>
       <text x="${n.x+n.w-14}" y="${n.y+(compact?109:155)}" text-anchor="end"
-       style="font-size:${compact?10:13}px">${esc(fmtKWh(d.gridExportToday))}</text>`:""}
+       style="font-size:${(compact?10:fz(13,1.2))}px">${esc(fmtKWh(d.gridExportToday))}</text>`:""}
   </g>`;
   return body;
 }
@@ -1727,6 +1783,12 @@ function step1Battery(x,y,w,h,b,compact) {
   const room=artX-textX-7;
   const soc=b.socValue==null?"–":Math.round(level)+" %";
   // charge level in green while charging, red while discharging, neutral at rest
+  // The three lines share the box height; larger text is only taken as far
+  // as it still fits between the top edge and the power line at the bottom.
+  const fit=Math.min(1,(h-20)/(fz(compact?17:23,1.25)*0.95+fz(compact?11:14,1.25)*2.1+6));
+  const fSoc=Math.max(compact?17:23,fz(compact?17:23,1.25)*fit);
+  const fName=Math.max(compact?11:14,fz(compact?11:14,1.25)*fit), fPow=fName;
+  const socY=y+Math.round(5+fSoc*0.95), nameY=Math.min(socY+Math.round(fName*1.25), y+h-12-fPow);
   const socFill=b.charging?inkify("#22e6a4",LIGHT):b.active?inkify("#ff5d6c",LIGHT):"currentColor";
   const barW=compact?8:11,barH=compact?36:45,barX=x+12,barY=y+10;
   return `<g class="step1-battery clickable" data-entity="${esc(b.soc||b.power)}">
@@ -1734,12 +1796,12 @@ function step1Battery(x,y,w,h,b,compact) {
     <rect class="socbar-bg" x="${barX}" y="${barY}" width="${barW}" height="${barH}" rx="4"/>
     <rect x="${barX}" y="${barY+barH*(1-level/100)}" width="${barW}" height="${barH*level/100}" rx="4" fill="${inkify(accent,LIGHT)}"/>
     ${artwork(artX,y+5,artH,image,b.icon||"mdi:battery",accent,undefined,artW)}
-    <text class="step1-battery-soc" x="${textX}" y="${y+(compact?26:31)}"
-      style="font-size:${step1Fit(soc,room,compact?17:23,700)}px;font-weight:700;fill:${socFill}">${esc(soc)}</text>
-    <text class="step1-battery-name" x="${textX}" y="${y+(compact?44:51)}"
-      style="font-size:${step1Fit(label,room,compact?11:14,600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(label)}</text>
+    <text class="step1-battery-soc" x="${textX}" y="${socY}"
+      style="font-size:${step1Fit(soc,room,fSoc,700)}px;font-weight:700;fill:${socFill}">${esc(soc)}</text>
+    <text class="step1-battery-name" x="${textX}" y="${nameY}"
+      style="font-size:${step1Fit(label,room,fName,600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(label)}</text>
     <text class="step1-battery-power" x="${textX}" y="${y+h-11}"
-      style="font-size:${step1Fit(power,x+w-10-textX,compact?11:14,650)}px;font-weight:650">${esc(power)}</text>
+      style="font-size:${step1Fit(power,x+w-10-textX,fPow,650)}px;font-weight:650">${esc(power)}</text>
   </g>`;
 }
 
@@ -1784,10 +1846,11 @@ function step1Battery(x,y,w,h,b,compact) {
       : v.image === "none" ? "none"
       : v.image ? v.image
       : v.plugged ? "builtin:ev-plugged" : "builtin:ev";
-    const big = compact ? 30 : 28, kpi = compact ? 20 : 18, mid = 13, small = 12;
+    const tv = Math.min(TB, 1.25);
+    const big = fz(compact ? 30 : 28, 1.25), kpi = fz(compact ? 20 : 18, 1.25), mid = fz(13, 1.25), small = fz(12, 1.2);
     const metrics = v.metricValues || [];
     const mRows = vehicleMetricRows(v, w);
-    const textTop = y + h - 20 - mRows * 40 - 62;
+    const textTop = y + h - 20 - mRows * 40 - Math.round(62 * tv);
     const artX = x + 8, artY = y + 8, artW = w - 16, artH = textTop - artY - 6;
     const soc = v.socValue == null ? "–" : Math.round(level) + " %";
     const dur = v.charging ? fmtDuration(v.timeToFull) : null;
@@ -1801,8 +1864,12 @@ function step1Battery(x,y,w,h,b,compact) {
         style="stroke:${inkify(accent, LIGHT)}"/>${icon(bx - 10, by - 10, 20, "mdi:ev-plug-type-2", accent, accent + "aa")}</g>`;
     }
     // the two key figures: charge level left, charging power (or status) right
-    const right1 = v.charging ? fmtW(v.powerValue) : status;
-    const right2 = v.charging ? [status, dur].filter(Boolean).join(" · ") : "";
+    // A narrow panel can't hold the charge level and the status side by side
+    // at a readable size, so the status joins the bottom line instead.
+    const tight = half < 90;
+    const right1 = tight ? "" : v.charging ? fmtW(v.powerValue) : status;
+    const right2 = tight ? "" : v.charging ? [status, dur].filter(Boolean).join(" · ") : "";
+    const line3 = tight ? [v.charging ? fmtW(v.powerValue) : range, status].filter(Boolean).join(" · ") : range;
     let row = "";
     if (metrics.length) {
       const cols = Math.ceil(metrics.length / mRows), cw = (w - 16) / cols, mTop = textTop + 66;
@@ -1824,16 +1891,16 @@ function step1Battery(x,y,w,h,b,compact) {
           preserveAspectRatio="xMidYMid ${fit}" clip-path="url(#${id})"/>
         <rect class="ev-photo-frame" x="${artX}" y="${artY}" width="${artW}" height="${artH}" rx="10"/>`;
       })() : artwork(artX, artY, artH, image, v.icon || "mdi:car-electric", accent, undefined, artW)}${badge}
-      <text class="ev-soc" x="${lx}" y="${textTop + 24}"
-        style="font-size:${step1Fit(soc, half, big, 700)}px;font-weight:700">${esc(soc)}</text>
-      <text x="${rx}" y="${textTop + 24}" text-anchor="end"
-        style="font-size:${step1Fit(right1, half + 6, v.charging ? kpi : 14, 700)}px;font-weight:700;fill:${v.charging ? green : "currentColor"}">${esc(right1)}</text>
-      <text x="${lx}" y="${textTop + 44}"
-        style="font-size:${step1Fit(v.name || "", half, mid, 600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(v.name || "")}</text>
-      ${right2 ? `<text x="${rx}" y="${textTop + 44}" text-anchor="end"
+      <text class="ev-soc" x="${lx}" y="${textTop + Math.round(24 * tv)}"
+        style="font-size:${step1Fit(soc, tight ? w - 24 : half, big, 700)}px;font-weight:700">${esc(soc)}</text>
+      <text x="${rx}" y="${textTop + Math.round(24 * tv)}" text-anchor="end"
+        style="font-size:${step1Fit(right1, half + 6, v.charging ? kpi : fz(14, 1.25), 700)}px;font-weight:700;fill:${v.charging ? green : "currentColor"}">${esc(right1)}</text>
+      <text x="${lx}" y="${textTop + Math.round(44 * tv)}"
+        style="font-size:${step1Fit(v.name || "", tight ? w - 24 : half, mid, 600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(v.name || "")}</text>
+      ${right2 ? `<text x="${rx}" y="${textTop + Math.round(44 * tv)}" text-anchor="end"
         style="font-size:${step1Fit(right2, half + 6, mid, 650)}px;font-weight:650;fill:${green}">${esc(right2)}</text>` : ""}
-      ${range ? `<text x="${lx}" y="${textTop + 60}"
-        style="font-size:${step1Fit(range, w - 24, small, 600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(range)}</text>` : ""}
+      ${line3 ? `<text x="${lx}" y="${textTop + Math.round(60 * tv)}"
+        style="font-size:${step1Fit(line3, w - 24, small, 600)}px;font-weight:600;fill:${tight && v.charging ? green : "var(--sc-ink-soft)"}">${esc(line3)}</text>` : ""}
       ${row}
       <rect class="socbar-bg" x="${barX}" y="${barY}" width="${barW}" height="5" rx="2.5"/>
       <rect x="${barX}" y="${barY}" width="${(barW * level / 100).toFixed(1)}" height="5" rx="2.5" fill="${inkify(accent, LIGHT)}"/>
@@ -2062,6 +2129,8 @@ function step1Battery(x,y,w,h,b,compact) {
         return { ...cl, value: p, stateText: st ? hass.formatEntityState(st) : null, active: on,
                  metricValues: (cl.metrics || []).map((m) => ({ ...m, value: num(hass, m.entity) })) };
       });
+      const now = Date.now();
+      const seen = this._seenActive || (this._seenActive = new Map());
       const consumers = c.consumers.filter((x) => !x.hidden).map((x) => {
         const v = num(hass, x.entity);
         const unit = x.unit || "W";
@@ -2076,7 +2145,8 @@ function step1Battery(x,y,w,h,b,compact) {
         return { ...x, value: standby ? 0 : v, text: fmtBy(unit, standby ? 0 : v),
                  standby,
                  active: unit === "W" && v != null && v > tol,
-                 hideZero: x.hide_when_zero && (v == null || Math.abs(v) <= tol),
+                 hideZero: !x.always_show && (c.consumers_auto_hide !== false || x.hide_when_zero)
+                   && idleFor(seen, x.entity, unit === "W" ? v == null || Math.abs(v) <= tol : !v, now),
                  secondaryText: x.secondary?.entity
                    ? `${x.secondary.label || ""} ${fmtBy(x.secondary.unit || "W", num(hass, x.secondary.entity))}`.trim()
                    : null };
@@ -2128,7 +2198,7 @@ function step1Battery(x,y,w,h,b,compact) {
       LIGHT = ((this._config && this._config.theme) || {}).mode === "hell";
       const d = this._data();
       const mode = this._mode || "mid";
-      const P = MODES[mode];
+      const P = { ...MODES[mode], climate: this._config.layout.climate };
 
       // Work out how tall the drawing may be, then aim the layout at exactly
       // that shape. Fitting the target instead of scaling down afterwards
@@ -2171,6 +2241,10 @@ function step1Battery(x,y,w,h,b,compact) {
       }
       const L = this._layout;
       this._room = room;
+      // How many screen pixels one drawing unit gets; below 1 the text is
+      // grown back so it never ends up smaller than designed.
+      const px = cardW && L.vbw ? cardW / L.vbw : 1;
+      TB = clamp(1.04 / px, 1, 1.45) * clamp(Number(this._config.layout.text_scale) || 1, 0.7, 1.6);
       const PS = Object.assign({}, P, { scale: L.scale == null ? 1 : L.scale });
       const stage = this.shadowRoot.getElementById("stage");
 
@@ -2183,7 +2257,7 @@ function step1Battery(x,y,w,h,b,compact) {
       let knock = "";
       L.links.forEach((link, i) => {
         const k = { ...link, ...liveFlow(link, d) };
-        if (k.label) k.label = { ...k.label, text: fmtW(d.pvTotal) };
+        if (k.label) k.label = { ...k.label, text: fmtW(d.pvTotal), size: fz(k.label.size, 1.3) };
         const w = `<g data-flow="${i}" data-flow-kind="${k.flow.type}"
           data-flow-on="${k.on}" data-flow-reverse="${!!k.rev}">${
           wireSvg(k.d, k.cls, k.on, k.rev, k.distance, wireStyle)}</g>`;
@@ -2217,7 +2291,7 @@ function step1Battery(x,y,w,h,b,compact) {
           s += `<rect class="label-chip" x="${b.x}" y="${b.y}" width="${b.w}"
                       height="${b.h}" rx="${(b.h / 2).toFixed(1)}"/>`;
         }
-        s += `<text class="${l.cls}" x="${l.x}" y="${l.y}" text-anchor="middle">${esc(l.text === undefined ? fmtW(d.pvTotal) : l.text)}</text>`;
+        s += `<text class="${l.cls}" x="${l.x}" y="${l.y}" text-anchor="middle" style="font-size:${l.size}px">${esc(l.text === undefined ? fmtW(d.pvTotal) : l.text)}</text>`;
       });
       s += `</svg>`;
       // Home Assistant pushes a state update several times a second. Replacing
@@ -2273,7 +2347,7 @@ function step1Battery(x,y,w,h,b,compact) {
             <g class="${c.home.entity ? "clickable" : ""}"${c.home.entity ? ` data-entity="${esc(c.home.entity)}"` : ""}>
             <circle class="center" cx="${n.x}" cy="${n.y}" r="${n.r}" fill="${LIGHT ? "rgba(255,255,255,0.82)" : "rgba(16,28,52,0.85)"}" stroke="${LIGHT ? "rgba(255,255,255,0.95)" : "rgba(120,190,255,0.5)"}" stroke-width="1.5"/>
             ${artwork(n.x - size * .6, n.y - size / 2 - 9, size, img, c.home.icon || "mdi:home-lightning-bolt", "#7fd4ff", "rgba(0,190,255,.6)", size * 1.2)}
-            <text x="${n.x}" y="${n.y + n.r - 12}" text-anchor="middle" font-size="${Math.round(n.r * (d.home == null ? 0.19 : 0.28))}" font-weight="700">${d.home == null ? T("Unvollständig") : esc(fmtW(d.home))}</text></g>`;
+            <text x="${n.x}" y="${n.y + n.r - 12}" text-anchor="middle" font-size="${fz(n.r * (d.home == null ? 0.19 : 0.28), 1.3)}" font-weight="700">${d.home == null ? T("Unvollständig") : esc(fmtW(d.home))}</text></g>`;
         }
         case "grid": return step1Grid(n,d,c.grid);
         case "storage": {
@@ -2362,15 +2436,21 @@ function step1Battery(x,y,w,h,b,compact) {
   const ends = [];
   const energyTexts = d.solar.map(p => T("Heute") + " " + fmtPvEnergy(p.energyToday));
   const energySize = Math.min(...d.solar.filter(p => p.energy_today)
-    .map(p => step1Fit(T("Heute") + " " + fmtPvEnergy(p.energyToday), n.cellW - 16, n.compact ? 13 : 14, 600)), 14);
+    .map(p => step1Fit(T("Heute") + " " + fmtPvEnergy(p.energyToday), n.cellW - 16, fz(n.compact ? 13 : 14, 1.2), 600)), fz(14, 1.2));
+  // Name, value and yield are stacked up from the bottom of the cell so larger
+  // text takes its room from the artwork rather than overlapping.
+  const fName = fz(n.compact ? 12 : 13, 1.25);
+  const fValue = Math.min(...d.solar.map(p => step1Fit(fmtW(p.value), n.cellW - 12, fz(n.compact ? 17 : 20, 1.3), 700)));
+  const anyYield = d.solar.some(p => p.energy_today);
   for (let i = 0; i < d.solar.length; i++) {
     const p = d.solar[i];
     const image = resolveImage((light && p.image_light ? p.image_light : p.image) || "builtin:solar-roof");
     const row = Math.floor(i / n.perRow), col = i % n.perRow;
     const x = start + col * (n.cellW + n.cellGap), y = top + row * (n.cellH + 8);
     const cx = x + n.cellW / 2;
-    const artH = n.compact ? 62 : 68;
-    const nameY = y + (n.compact ? 80 : 86), valueY = y + (n.compact ? 100 : 110);
+    const valueY = y + n.cellH - (anyYield ? energySize + 14 : 12);
+    const nameY = valueY - fValue - 3;
+    const artH = Math.min(n.compact ? 62 : 68, nameY - fName - y - 6);
     const artW = Math.min(n.cellW - 12, artH * 1.5);
     svg += `<g data-entity="${esc(p.entity)}" class="clickable">
       <rect class="pv-cell" x="${x}" y="${y}" width="${n.cellW}" height="${n.cellH}" rx="13"
@@ -2379,11 +2459,11 @@ function step1Battery(x,y,w,h,b,compact) {
       ${image ? `<image href="${esc(image)}" x="${cx - artW / 2}" y="${y + 3}" width="${artW}" height="${artH}" preserveAspectRatio="xMidYMid meet"/>`
         : icon(cx - 20, y + 14, 40, p.icon || "mdi:solar-panel", tint, undefined, REDRAW)}
       <text class="pv-pilot-name" x="${cx}" y="${nameY}" text-anchor="middle"
-        style="font-size:${n.compact ? 12 : 13}px;font-weight:600;fill:${muted}">${esc(p.name)}</text>
+        style="font-size:${step1Fit(p.name || "", n.cellW - 12, fName, 600)}px;font-weight:600;fill:${muted}">${esc(p.name)}</text>
       <text class="pv-pilot-value" x="${cx}" y="${valueY}" text-anchor="middle"
-        style="font-size:${n.compact ? 17 : 20}px;font-weight:700;fill:${text}">${esc(fmtW(p.value))}</text>
+        style="font-size:${fValue}px;font-weight:700;fill:${text}">${esc(fmtW(p.value))}</text>
       ${p.energy_today ? `<g class="clickable pv-array-yield" data-entity="${esc(p.energy_today)}">
-        <text class="pv-pilot-energy" x="${cx}" y="${valueY + 22}" text-anchor="middle"
+        <text class="pv-pilot-energy" x="${cx}" y="${valueY + energySize + 7}" text-anchor="middle"
           style="font-size:${energySize}px;font-weight:600;fill:${muted}">${esc(energyTexts[i])}</text>
       </g>` : ""}
     </g>`;
@@ -2402,17 +2482,21 @@ function step1Battery(x,y,w,h,b,compact) {
       let s = `<g class="pulse"><rect class="group-frame" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="18"/>
         ${icon(n.x + 12, n.y + 9, 20, "mdi:snowflake-thermometer", "#60a5fa", "rgba(96,165,250,.7)")}
         <text class="group-title" x="${n.x + 39}" y="${n.y + 25}">${T("KLIMA")}</text>`;
-      const cx = n.x + 9, cw = n.w - 18;
+      const cx = n.x + 9, cw = n.w - 18, room = cw - 50;
+      const fN = fz(13, 1.25), fS = fz(12, 1.25), fM = fz(11, 1.2);
       d.climate.forEach((c, i) => {
+        const name = c.name || "";
         const y = n.y + 42 + i * (n.cellH + 10);
         const ent = c.entity || c.state_entity;
         s += `<g class="${ent ? "clickable" : ""}"${ent ? ` data-entity="${esc(ent)}"` : ""}>
           <rect class="group-cell" x="${cx}" y="${y}" width="${cw}" height="${n.cellH}" rx="11"/>
           ${artwork(cx + 8, y + 10, 28, c.image, c.icon || "mdi:air-conditioner", "#7dd3fc", "rgba(56,189,248,.55)")}
-          <text class="cell-name" x="${cx + 42}" y="${y + 18}">${esc(c.name || "")}</text>
-          <text class="cell-state" x="${cx + 42}" y="${y + 36}">${esc(c.value == null ? (c.stateText || "–") : fmtW(c.value))}</text>`;
+          <text class="cell-name" x="${cx + 42}" y="${y + 4 + fN}" style="font-size:${step1Fit(name, room, fN, 700)}px">${esc(name)}</text>
+          <text class="cell-state" x="${cx + 42}" y="${y + 8 + fN + fS}" style="font-size:${fS}px">${esc(c.value == null ? (c.stateText || "–") : fmtW(c.value))}</text>`;
         c.metricValues.slice(0, 2).forEach((m, j) => {
-          s += `<text class="cell-metric" x="${cx + 42}" y="${y + 57 + j * 16}">${esc(m.label || "")} ${esc(fmtBy(m.unit || "kWh", m.value))}</text>`;
+          const t = `${m.label || ""} ${fmtBy(m.unit || "kWh", m.value)}`;
+          s += `<text class="cell-metric" x="${cx + 42}" y="${y + n.cellH - 7 - (Math.min(2, c.metricValues.length) - 1 - j) * (fM + 3)}"
+            style="font-size:${step1Fit(t, room, fM, 600)}px">${esc(t)}</text>`;
         });
         s += `</g>`;
       });
@@ -2712,6 +2796,11 @@ function step1Battery(x,y,w,h,b,compact) {
           { value: "never", label: "Nie (natürliche Höhe)" },
         ] } } },
         { name: "bottom_gap", label: "Abstand nach unten (px)", selector: SEL.num(0, 200, 2) },
+        { name: "climate", label: "Klima-Position", selector: { select: { mode: "dropdown", options: [
+          { value: "left", label: "Links über dem Netz (Standard)" },
+          { value: "right", label: "Rechts über den Verbrauchern" },
+        ] } } },
+        { name: "text_scale", label: "Schriftgröße (%)", selector: SEL.num(70, 160, 5) },
       ] },
       { name: "keep_awake", label: "Bildschirm wachhalten", selector: { select: { mode: "dropdown", options: [
         { value: "off", label: "Aus" },
@@ -2846,7 +2935,7 @@ function step1Battery(x,y,w,h,b,compact) {
       ] },
       { type: "grid", column_min_width: "220px", schema: [
         { name: "hidden", label: "Ausblenden", selector: SEL.bool },
-        { name: "hide_when_zero", label: "Bei 0 W ausblenden", selector: SEL.bool },
+        { name: "always_show", label: "Immer anzeigen", selector: SEL.bool },
       ] },
       { title: "Zweite Zeile (z. B. Tagesverbrauch)", name: "secondary",
         type: "expandable", icon: "mdi:text-short", schema: [
@@ -3352,7 +3441,9 @@ function step1Battery(x,y,w,h,b,compact) {
     _formData() {
       const c = this._config;
       return { title: c.title, mode: c.layout.mode, wide_min: c.layout.wide_min, mid_min: c.layout.mid_min,
-               fit_height: c.layout.fit_height, bottom_gap: c.layout.bottom_gap, keep_awake: c.keep_awake || "off" };
+               fit_height: c.layout.fit_height, bottom_gap: c.layout.bottom_gap, keep_awake: c.keep_awake || "off",
+               climate: c.layout.climate || "left",
+               text_scale: Math.round((Number(c.layout.text_scale) || 1) * 100) };
     }
 
     _renderOverview(root) {
@@ -3362,6 +3453,9 @@ function step1Battery(x,y,w,h,b,compact) {
           n.title = v.title;
           n.layout = { ...n.layout, mode: v.mode || "auto", wide_min: v.wide_min, mid_min: v.mid_min,
                        fit_height: v.fit_height, bottom_gap: v.bottom_gap };
+          if (v.climate === "right") n.layout.climate = "right"; else delete n.layout.climate;
+          const ts = Number(v.text_scale);
+          if (ts && ts !== 100) n.layout.text_scale = ts / 100; else delete n.layout.text_scale;
           if (v.keep_awake && v.keep_awake !== "off") n.keep_awake = v.keep_awake; else delete n.keep_awake;
         });
       });
@@ -3513,6 +3607,15 @@ function step1Battery(x,y,w,h,b,compact) {
         ? T("Reihenfolge bestimmt die Platzierung: die ersten füllen die rechte Spalte, der Rest die Reihen darunter.")
         : T("Mit den Pfeilen sortieren, mit dem Stift bearbeiten.");
       root.appendChild(hint);
+      if (page.id === "consumers") {
+        root.appendChild(this._form([{ name: "auto_hide", label: "Verbraucher ohne Verbrauch ausblenden", selector: SEL.bool }],
+          () => ({ auto_hide: this._config.consumers_auto_hide !== false }),
+          (v) => this._patch((n) => { if (v.auto_hide) delete n.consumers_auto_hide; else n.consumers_auto_hide = false; })));
+        const tip = document.createElement("div");
+        tip.className = "hint";
+        tip.textContent = T("Ohne Verbrauch werden Verbraucher ausgeblendet; mit der Pinnadel bleibt einer immer sichtbar.");
+        root.appendChild(tip);
+      }
 
       if (!arr.length) {
         const e = document.createElement("div");
@@ -3539,6 +3642,11 @@ function step1Battery(x,y,w,h,b,compact) {
           btns.appendChild(this._iconBtn(x.hidden ? "mdi:eye-off" : "mdi:eye",
             T(x.hidden ? "Einblenden" : "Ausblenden"),
             () => this._patch((n) => { n[page.id][i].hidden = !n[page.id][i].hidden; })));
+          btns.appendChild(this._iconBtn(x.always_show ? "mdi:pin" : "mdi:pin-off-outline",
+            T(x.always_show ? "Immer anzeigen" : "Nur bei Verbrauch anzeigen"),
+            () => this._patch((n) => {
+              if (n[page.id][i].always_show) delete n[page.id][i].always_show; else n[page.id][i].always_show = true;
+            })));
         }
         btns.appendChild(this._iconBtn("mdi:arrow-up", T("Nach oben"), () => this._move(page.id, i, -1), i === 0));
         btns.appendChild(this._iconBtn("mdi:arrow-down", T("Nach unten"), () => this._move(page.id, i, 1), i === arr.length - 1));

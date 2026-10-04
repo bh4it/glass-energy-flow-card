@@ -222,3 +222,44 @@ test("the battery card renders", async () => {
     await page.close();
   }
 });
+
+test("idle consumers are hidden unless pinned", async () => {
+  const shown = async (config) => {
+    const { page, errors } = await mount({ width: 1440, height: 900, config });
+    try {
+      await waitForDrawing(page);
+      const names = await page.evaluate((t) => [...document.querySelector(t).shadowRoot
+        .querySelectorAll("#stage svg .tileLabel")].map((n) => n.textContent), card);
+      assert.deepEqual(errors, []);
+      return names;
+    } finally {
+      await page.close();
+    }
+  };
+  // The dishwasher draws 0 W, the washer 130 W.
+  assert.deepEqual(await shown(CONFIG), ["Washer"]);
+  const pinned = { ...CONFIG, consumers: CONFIG.consumers.map((c) =>
+    c.name === "Dishwasher" ? { ...c, always_show: true } : c) };
+  assert.deepEqual(await shown(pinned), ["Washer", "Dishwasher"]);
+  assert.deepEqual(await shown({ ...CONFIG, consumers_auto_hide: false }), ["Washer", "Dishwasher"]);
+});
+
+test("climate sits left of the house in the wide layout, unless moved right", async () => {
+  const side = async (config) => {
+    const { page, errors } = await mount({ width: 1440, height: 900, config });
+    try {
+      await waitForDrawing(page);
+      const pos = await page.evaluate((t) => {
+        const svg = document.querySelector(t).shadowRoot.querySelector("#stage svg");
+        return { climate: +svg.querySelector(".cell-name").getAttribute("x"),
+                 house: +svg.querySelector("circle.center").getAttribute("cx") };
+      }, card);
+      assert.deepEqual(errors, []);
+      return pos.climate < pos.house ? "left" : "right";
+    } finally {
+      await page.close();
+    }
+  };
+  assert.equal(await side(CONFIG), "left");
+  assert.equal(await side({ ...CONFIG, layout: { climate: "right" } }), "right");
+});

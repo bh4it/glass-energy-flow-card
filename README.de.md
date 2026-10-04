@@ -289,8 +289,9 @@ grid_options:
 | `home` | `entity` (W), `icon`, `image`, `image_light` |
 | `vehicles[]` | `name`, `soc` (%), `power` (W), `plug`, `range` (km), `time_to_full` (min), `target_soc`, `threshold` (W, Standard 50), `invert`, `icon`, `image`, `image_plugged`, `image_fit` (`cover`/`contain`), `metrics[]` (`entity`, `icon`, `unit`; bis zu 6) |
 | `climate[]` | `name`, `entity` (W), `state_entity`, `icon`, `image`, `metrics[]` (`label`, `entity`, `unit`) |
-| `consumers[]` | `name`, `entity`, `unit`, `icon`, `color`, `image`, `hidden`, `secondary` (`entity`, `label`, `unit`) |
-| `layout` | `mode`: `auto` (Standard), `wide`, `mid`, `narrow`; Umschaltpunkte `wide_min` (1100 px), `mid_min` (680 px) |
+| `consumers_auto_hide` | `true` (Standard): Verbraucher ohne Verbrauch (bis zu ihrem `threshold`, Standard 5 W) werden ausgeblendet und geben ihren Platz frei; sie erscheinen wieder, sobald sie Strom ziehen, und bleiben danach noch eine Minute stehen. `false` zeigt alle Verbraucher |
+| `consumers[]` | `name`, `entity`, `unit`, `icon`, `color`, `image`, `hidden`, `always_show` (nie automatisch ausblenden), `threshold` (W), `secondary` (`entity`, `label`, `unit`) |
+| `layout` | `mode`: `auto` (Standard), `wide`, `mid`, `narrow`; Umschaltpunkte `wide_min` (1100 px), `mid_min` (680 px); `climate`: `left` (Standard, über dem Netz) oder `right` (über den Verbrauchern); `text_scale`: zusätzlicher Schriftfaktor, z. B. `1.15` (die wichtigsten Werte wachsen ohnehin automatisch, wenn die Karte klein dargestellt wird) |
 | `theme` | `preset`: `blau`, `dunkel`, `mitternacht`, `petrol`, `violett`, `grafit`, `hell`, `hell-blau`, `hell-violett`; `wires`: `puls`, `strich`, `ruhig`; Feinschliff mit `center`, `edge`, `spread`, `tile` |
 
 ## Glass Energy Battery Card

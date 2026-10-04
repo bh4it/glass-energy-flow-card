@@ -157,6 +157,7 @@
     "Ausblenden": "Hide",
     "Bei 0 W ausblenden": "Hide at 0 W",
     "Immer anzeigen": "Always show",
+    "VERBRAUCHER": "CONSUMERS",
     "Nur bei Verbrauch anzeigen": "Show only while drawing power",
     "Verbraucher ohne Verbrauch ausblenden": "Hide consumers that draw no power",
     "Klima-Position": "Climate position",
@@ -746,7 +747,8 @@
     const nodes = [], links = [];
     const distribution = { right: null, rows: [], gap };
 
-    const climW = tileW + 26;
+    // With consumers out of the right column it mirrors the left one.
+    const climW = P.consumers === "bottom" || P.consumers === "group" ? leftW : tileW + 26;
     const climX = vbw - pad - climW;
     const leftX = pad;
     const centerX = Math.round((leftX + leftW + climX) / 2);
@@ -857,7 +859,12 @@
     // Everything on the right is fed from one vertical trunk, mirroring the bus
     // bar used underneath, so the wiring stays readable as items are added.
     const vis = d.consumers;
-    const nRight = clamp(split?.right ?? Math.min(P.rightMax, vis.length), 0, vis.length);
+    // layout.consumers: "auto" fills the right column first, "bottom" keeps
+    // every consumer in the rows below, "group" frames them like the storage.
+    const where = P.consumers || "auto";
+    const capRight = where === "bottom" ? 0 : where === "group" ? P.rightMax * 2 : P.rightMax;
+    const nRight = clamp(split?.right ?? Math.min(capRight, vis.length), 0, vis.length);
+    const groupW = leftW, groupX = vbw - pad - groupW;
     const tileX = climX + Math.round((climW - tileW) / 2);
     const stubs = [];
 
@@ -886,14 +893,34 @@
       });
       rightY += climH + 16;
     }
+    if (where === "group" && nRight) rightEdgeX = Math.min(rightEdgeX, groupX);
     const trunkX = Math.round(Math.max(rightEdgeX - lane / 2 - 6,
       pvNode ? (pvNode.x + pvNode.w + rightEdgeX) / 2 : 0));
-    for (let i = 0; i < nRight; i++) {
-      const y = rightY + i * (tileH + gap);
-      nodes.push({ t: "load", i, x: tileX, y, w: tileW, h: tileH });
-      stubs.push({ y: y + tileH / 2, x: tileX, ref: ["consumers", i] });
+    let rightBottom;
+    if (where === "group" && nRight) {
+      // Two tiles per row inside one frame; each row gets one feed.
+      const cols = Math.min(2, nRight), rows = Math.ceil(nRight / cols);
+      const cw = Math.floor((groupW - 18 - (cols - 1) * 10) / cols), ch = tileH;
+      const gH = 42 + rows * (ch + 10) - 10 + 12;
+      nodes.push({ t: "loadgroup", x: groupX, y: rightY, w: groupW, h: gH });
+      for (let r = 0; r < rows; r++) {
+        const y = rightY + 42 + r * (ch + 10), refs = [];
+        for (let c = 0; c < cols && r * cols + c < nRight; c++) {
+          const i = r * cols + c;
+          nodes.push({ t: "load", i, x: groupX + 9 + c * (cw + 10), y, w: cw, h: ch });
+          refs.push(["consumers", i]);
+        }
+        stubs.push({ y: y + ch / 2, x: groupX, ref: refs[0], refs });
+      }
+      rightBottom = rightY + gH;
+    } else {
+      for (let i = 0; i < nRight; i++) {
+        const y = rightY + i * (tileH + gap);
+        nodes.push({ t: "load", i, x: tileX, y, w: tileW, h: tileH });
+        stubs.push({ y: y + tileH / 2, x: tileX, ref: ["consumers", i] });
+      }
+      rightBottom = nRight ? rightY + nRight * (tileH + gap) - gap : (rightY > sideTop ? rightY - 16 : pad);
     }
-    const rightBottom = nRight ? rightY + nRight * (tileH + gap) - gap : (rightY > sideTop ? rightY - 16 : pad);
 
     if (stubs.length) {
       distribution.right = { x: trunkX, targets: stubs };
@@ -952,7 +979,8 @@
             rightMax: sc < 1 ? P.rightMax + 2 : P.rightMax,
           });
           const maxCols = Math.max(1, Math.floor((Q.vbw - 2 * Q.pad + Q.gap) / (Q.tileW + Q.gap)));
-          const maxRight = Math.min(Q.rightMax, nC);
+          const maxRight = Math.min(P.consumers === "bottom" ? 0
+            : P.consumers === "group" ? Q.rightMax * 2 : Q.rightMax, nC);
           for (let right = maxRight; right >= 0; right--) {
             const rest = nC - right;
             const colOptions = rest > 0
@@ -984,7 +1012,10 @@
     // tiles sit side by side but makes everything smaller on screen.
     let best = search([1]);
     if (best && best.aspect < targetAspect * 0.93) {
-      const wide = search([1.12, 1.25, 1.4, 1.6, 1.8]);
+      // Kept modest on purpose: a much wider canvas only spreads the same
+      // boxes apart and shrinks them on screen, so on a big or full-screen
+      // view the drawing grows as a whole instead and keeps its layout.
+      const wide = search([1.1, 1.2]);
       if (wide && wide.err < best.err) best = wide;
     }
     best.L.scale = best.scale;
@@ -1093,7 +1124,7 @@
   function consumerNetwork(L) {
     const house = L.nodes.find(n => n.t === "house");
     const { right, rows, gap } = L.distribution;
-    const refs = targets => targets.map(t => t.ref);
+    const refs = targets => targets.flatMap(t => t.refs || [t.ref]);
     const edge = (from, to, targets, parent, straight = true) => {
       if (from.x === to.x && from.y === to.y) return parent;
       const index = L.links.length;
@@ -1110,7 +1141,7 @@
         side.forEach((target, i) => {
           const junction = { ...origin, [axis]: target[axis] };
           const feed = edge(from, junction, refs(side.slice(i)), previous);
-          edge(junction, { x: target.x, y: target.y }, [target.ref], feed);
+          edge(junction, { x: target.x, y: target.y }, target.refs || [target.ref], feed);
           from = junction;
           previous = feed;
         });
@@ -1670,8 +1701,10 @@
     const padTop = Math.round(8 * k);
     const inner = n.w - 12;
     const subY = n.y + n.h - Math.round(8 * k);
-    const labelY = o.sub ? subY - fSub - fVal - 3 : n.y + n.h - Math.round(30 * k);
-    const valueY = o.sub ? subY - fSub - 3 : n.y + n.h - Math.round(11 * k);
+    // Stacked from the bottom edge by the actual font sizes, so boosted text
+    // never runs into the line above it.
+    const valueY = o.sub ? subY - fSub - 3 : n.y + n.h - Math.round(10 * k);
+    const labelY = valueY - Math.round(fVal * 0.95) - 3;
     // photos read poorly at glyph size, so grow them into the free space above
     // the label while keeping a small breathing gap
     const artMax = labelY - fLabel - (n.y + padTop) - 4;
@@ -2208,7 +2241,7 @@ function step1Battery(x,y,w,h,b,compact) {
       LIGHT = ((this._config && this._config.theme) || {}).mode === "hell";
       const d = this._data();
       const mode = this._mode || "mid";
-      const P = { ...MODES[mode], climate: this._config.layout.climate };
+      const P = { ...MODES[mode], climate: this._config.layout.climate, consumers: this._config.layout.consumers };
 
       // Work out how tall the drawing may be, then aim the layout at exactly
       // that shape. Fitting the target instead of scaling down afterwards
@@ -2377,6 +2410,10 @@ function step1Battery(x,y,w,h,b,compact) {
         }
         case "vehicle": return d.vehicles[n.i] ? vehicleSvg(n.x, n.y, n.w, n.h, d.vehicles[n.i], true) : "";
         case "climate": return this._climateGroup(n, d);
+        case "loadgroup":
+          return `<g class="pulse"><rect class="group-frame" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="18"/>
+            ${icon(n.x + 12, n.y + 9, 20, "mdi:power-plug", "#60a5fa", "rgba(96,165,250,.7)")}
+            <text class="group-title" x="${n.x + 39}" y="${n.y + 25}">${T("VERBRAUCHER")}</text></g>`;
         case "load": {
           const l = d.consumers[n.i];
           if (!l) return "";

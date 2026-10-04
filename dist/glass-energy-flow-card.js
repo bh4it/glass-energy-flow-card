@@ -156,6 +156,19 @@
     "Farbe (z. B. #4dd0e1)": "Colour (e.g. #4dd0e1)",
     "Ausblenden": "Hide",
     "Bei 0 W ausblenden": "Hide at 0 W",
+    "Immer anzeigen": "Always show",
+    "VERBRAUCHER": "CONSUMERS",
+    "Nur bei Verbrauch anzeigen": "Show only while drawing power",
+    "Verbraucher ohne Verbrauch ausblenden": "Hide consumers that draw no power",
+    "Klima-Position": "Climate position",
+    "Rechts unter dem E-Auto (Standard)": "Right, below the vehicle (default)",
+    "Links über dem Netz": "Left, above the grid",
+    "Verbraucher-Anordnung": "Consumer placement",
+    "Unten in Reihen (Standard)": "Rows below (default)",
+    "Rechts als Gruppe": "Group on the right",
+    "Rechte Spalte zuerst, Rest unten": "Right column first, rest below",
+    "Schriftgröße (%)": "Text size (%)",
+    "Ohne Verbrauch werden Verbraucher ausgeblendet; mit der Pinnadel bleibt einer immer sichtbar.": "Consumers without draw are hidden; pin one to keep it visible.",
     "Zweite Zeile (z. B. Tagesverbrauch)": "Second line (e.g. daily usage)",
     "Entität für die zweite Zeile": "Entity for the second line",
     "Beschriftung (z. B. Heute)": "Label (e.g. Today)",
@@ -181,7 +194,7 @@
     "Nichts angezeigt": "Nothing shown",
     "Zurück": "Back",
     "Optionales Bild im hellen Design": "Optional image for the light theme",
-    "Reihenfolge bestimmt die Platzierung: die ersten füllen die rechte Spalte, der Rest die Reihen darunter.": "The order sets the placement: the first ones fill the right column, the rest the rows below.",
+    "Mit den Pfeilen legst du die Reihenfolge der Kacheln fest.": "The arrows set the order of the tiles.",
     "Mit den Pfeilen sortieren, mit dem Stift bearbeiten.": "Sort with the arrows, edit with the pencil.",
     "Noch nichts konfiguriert — unten eine Entität auswählen.": "Nothing configured yet — pick an entity below.",
     "Einblenden": "Show",
@@ -734,20 +747,33 @@
    * @param split.cols   columns used by the consumer rows underneath
    */
   function layoutRing(P, d, split) {
-    const { vbw, pad, tileW, tileH, gap, houseR, leftW, lane } = P;
+    const { vbw, pad, tileW, tileH, gap, houseR, lane } = P;
     const nodes = [], links = [];
     const distribution = { right: null, rows: [], gap };
 
-    const climW = tileW + 26;
+    // layout.consumers: "bottom" (default) keeps every consumer in the rows
+    // under the house, "group" frames them in the right column like the
+    // storage, "auto" fills the right column with tiles first. Unless it is
+    // "auto", both side columns share one, slightly wider, width.
+    const where = P.consumers || "bottom";
+    const sym = where !== "auto";
+    const leftW = sym ? Math.round(P.leftW * 1.1) : P.leftW;
+    const climW = sym ? leftW : tileW + 26;
     const climX = vbw - pad - climW;
     const leftX = pad;
     const centerX = Math.round((leftX + leftW + climX) / 2);
+
+    // With the storage at the top of the left column its feeds run down a
+    // lane between the column and the PV band, so that gap is widened.
+    const storageFirst = !(P.climate === "left" && d.climate.length) && d.batteries.length > 0;
+    const laneBase = leftX + leftW + 14;
+    const pvGap = 17 + (storageFirst ? d.batteries.length * 14 + 8 : 0);
 
     // ---- PV band (top, centred) ---------------------------------------
     const nS = d.solar.length;
     let pvBottom = pad, pvNode = null;
     if (nS) {
-      const maxPvW = climX - (leftX + leftW) - 34;
+      const maxPvW = climX - (leftX + leftW) - 2 * pvGap;
       const cellGap = 12, minCell = 110, maxCell = 172;
       const perRow = Math.max(1, Math.min(nS, Math.floor((maxPvW - 36 + cellGap) / (minCell + cellGap))));
       const cellW = clamp((maxPvW - 36 - (perRow - 1) * cellGap) / perRow, minCell, maxCell);
@@ -760,6 +786,10 @@
       nodes.push(pvNode);
       pvBottom = pad + pvH;
     }
+
+    // The side panels start a little below the PV band, so the band reads as
+    // the top of the drawing where the power comes from.
+    const sideTop = pad + (pvNode ? Math.round(clamp(pvNode.h * 0.3, 30, 70)) : 0);
 
     // ---- house ---------------------------------------------------------
     const houseY = pvBottom + (nS ? lane + 62 : 70) + houseR;
@@ -777,49 +807,105 @@
       });
     }
 
-    // ---- grid + storage on the left -------------------------------------
+    // ---- climate, grid + storage on the left ------------------------------
     const gridW = leftW, gridH = 168;
-    const gridY = houseY - Math.round(gridH / 2) - 26;
+    // Climate sits under the vehicle on the right unless layout.climate is
+    // "left", where it goes above the grid.
+    const climLeft = P.climate === "left" && d.climate.length > 0;
+    const climCellH = 86;
+    let gridY = houseY - Math.round(gridH / 2) - 26;
     let leftBottom = gridY;
-    if (d.grid.entity) {
-      nodes.push({ t: "grid", x: leftX, y: gridY, w: gridW, h: gridH });
-      links.push({
-        from: { x: leftX + gridW, y: gridY + gridH / 2 }, to: housePort(house, "w", -18),
-        viaX: centerX - houseR - 18 - d.batteries.length * 16,
-        flow: { type: "grid" },
-      });
-      leftBottom = gridY + gridH;
+    if (climLeft) {
+      const climH = 42 + d.climate.length * (climCellH + 10) - 10 + 10;
+      // Top-aligned with the right-hand column (vehicle panel or first tile),
+      // so both sides start on one line.
+      const climY = sideTop;
+      nodes.push({ t: "climate", x: leftX, y: climY, w: leftW, h: climH, cellH: climCellH });
+      // One feed leaves the house high on its left flank, clear of the grid
+      // wire, and climbs a lane in the gap beside the column, so it never has
+      // to cross the PV band. Each unit branches off that lane.
+      const off = Math.round(houseR * 0.8);
+      const gapW = pvNode ? pvNode.x - (leftX + leftW) : 40;
+      const laneX = leftX + leftW + Math.min(20, Math.round(gapW / 2));
+      const all = d.climate.map((c, i) => ["climate", i]);
+      const cellY = (i) => climY + 42 + i * (climCellH + 10) + climCellH / 2;
+      let from = { x: laneX, y: houseY - off };
+      let parent = links.length;
+      links.push({ from: { x: Math.round(centerX - Math.sqrt(houseR * houseR - off * off)), y: houseY - off },
+                   to: from, straight: true, flow: { type: "consumer", refs: all } });
+      for (let i = d.climate.length - 1; i >= 0; i--) {
+        const j = { x: laneX, y: cellY(i) };
+        if (j.y !== from.y) {
+          links.push({ from, to: j, straight: true, parent, flow: { type: "consumer", refs: all.slice(0, i + 1) } });
+          parent = links.length - 1;
+        }
+        links.push({ from: j, to: { x: leftX + leftW, y: j.y }, straight: true, parent,
+                     flow: { type: "consumer", refs: [all[i]] } });
+        from = j;
+      }
+      gridY = Math.max(gridY, climY + climH + 16);
+      leftBottom = climY + climH;
     }
-    if (d.batteries.length) {
-      const stY = leftBottom + 20, batH = P.batH;
-      const stH = 42 + d.batteries.length * (batH + 10) - 10 + 12;
+    const nB = d.batteries.length, batH = P.batH;
+    const stH = 42 + nB * (batH + 10) - 10 + 12;
+    // Storage on top (level with the vehicle) and the grid below it, unless
+    // the climate group has taken the top of the column.
+    const onHouse = (off) => ({ x: Math.round(centerX - Math.sqrt(houseR * houseR - off * off)), y: houseY + off });
+    const placeGrid = (y, port) => {
+      nodes.push({ t: "grid", x: leftX, y, w: gridW, h: gridH });
+      const mid = y + gridH / 2;
+      if (storageFirst && Math.abs(mid - houseY) < houseR * 0.75) {
+        // level with the house: one straight run
+        links.push({ from: { x: leftX + gridW, y: mid }, to: onHouse(mid - houseY),
+                     straight: true, flow: { type: "grid" } });
+      } else {
+        links.push({
+          from: { x: leftX + gridW, y: mid }, to: storageFirst ? onHouse(port) : housePort(house, "w", port),
+          viaX: storageFirst ? laneBase + nB * 14 : centerX - houseR - 18 - nB * 16,
+          flow: { type: "grid" }, fixed: storageFirst,
+        });
+      }
+      return y + gridH;
+    };
+    const placeStorage = (stY, above) => {
       nodes.push({ t: "storage", x: leftX, y: stY, w: leftW, h: stH, batH });
-      leftBottom = stY + stH;
       d.batteries.forEach((b, i) => {
         links.push({
           from: { x: leftX + leftW, y: stY + 42 + i * (batH + 10) + batH / 2 },
-          to: housePort(house, "w", 20 + i * 16),
-          // stagger the vertical runs so parallel battery lines never overlap
-          viaX: centerX - houseR - 18 - i * 16,
-          flow: { type: "battery", index: i },
+          // From the top the first battery takes the highest port and the
+          // outermost lane, the next ones nest inside it, so no lines cross.
+          to: above ? onHouse(-Math.round(houseR * 0.3) - (nB - 1 - i) * 16) : housePort(house, "w", 20 + i * 16),
+          viaX: above ? laneBase + (nB - 1 - i) * 14 : centerX - houseR - 18 - i * 16,
+          flow: { type: "battery", index: i }, fixed: above,
         });
       });
+      return stY + stH;
+    };
+    if (storageFirst) {
+      leftBottom = placeStorage(sideTop, true);
+      // the grid line enters a little below the centre, clear of the batteries
+      if (d.grid.entity) leftBottom = placeGrid(Math.max(leftBottom + 20, houseY + 14 - gridH / 2), 18);
+    } else {
+      if (d.grid.entity) leftBottom = placeGrid(gridY, -18);
+      if (nB) leftBottom = placeStorage(leftBottom + 20, false);
     }
 
     // ---- right-hand side: climate group + consumer column ------------------
     // Everything on the right is fed from one vertical trunk, mirroring the bus
     // bar used underneath, so the wiring stays readable as items are added.
     const vis = d.consumers;
-    const nRight = clamp(split?.right ?? Math.min(P.rightMax, vis.length), 0, vis.length);
+    const capRight = where === "bottom" ? 0 : where === "group" ? P.rightMax * 2 : P.rightMax;
+    const nRight = clamp(split?.right ?? Math.min(capRight, vis.length), 0, vis.length);
+    const groupW = leftW, groupX = vbw - pad - groupW;
     const tileX = climX + Math.round((climW - tileW) / 2);
     const stubs = [];
 
-    let rightY = pad, rightEdgeX = climX;
+    let rightY = sideTop, rightEdgeX = climX;
     // ---- electric vehicles, top right above the climate group -----------
     // Wider than the column when the PV band leaves room, so the car stays legible.
     if (d.vehicles.length) {
       const room = vbw - pad - (pvNode ? pvNode.x + pvNode.w : leftX + leftW) - lane - 14;
-      const evW = Math.round(clamp(room, climW, 280));
+      const evW = sym ? climW : Math.round(clamp(room, climW, 280));
       const evX = vbw - pad - evW;
       const vehH = vehicleArtH(d.vehicles, evW - 34) + 104 + vehicleExtraH(d.vehicles, evW - 18);
       const evH = 42 + d.vehicles.length * (vehH + 10) - 10 + 12;
@@ -830,8 +916,8 @@
       rightEdgeX = Math.min(climX, evX);
       rightY += evH + 16;
     }
-    if (d.climate.length) {
-      const cellH = 80;
+    if (d.climate.length && !climLeft) {
+      const cellH = climCellH;
       const climH = 42 + d.climate.length * (cellH + 10) - 10 + 10;
       nodes.push({ t: "climate", x: climX, y: rightY, w: climW, h: climH, cellH });
       d.climate.forEach((c, i) => {
@@ -839,14 +925,34 @@
       });
       rightY += climH + 16;
     }
+    if (where === "group" && nRight) rightEdgeX = Math.min(rightEdgeX, groupX);
     const trunkX = Math.round(Math.max(rightEdgeX - lane / 2 - 6,
       pvNode ? (pvNode.x + pvNode.w + rightEdgeX) / 2 : 0));
-    for (let i = 0; i < nRight; i++) {
-      const y = rightY + i * (tileH + gap);
-      nodes.push({ t: "load", i, x: tileX, y, w: tileW, h: tileH });
-      stubs.push({ y: y + tileH / 2, x: tileX, ref: ["consumers", i] });
+    let rightBottom;
+    if (where === "group" && nRight) {
+      // Two tiles per row inside one frame; each row gets one feed.
+      const cols = Math.min(2, nRight), rows = Math.ceil(nRight / cols);
+      const cw = Math.floor((groupW - 18 - (cols - 1) * 10) / cols), ch = tileH;
+      const gH = 42 + rows * (ch + 10) - 10 + 12;
+      nodes.push({ t: "loadgroup", x: groupX, y: rightY, w: groupW, h: gH });
+      for (let r = 0; r < rows; r++) {
+        const y = rightY + 42 + r * (ch + 10), refs = [];
+        for (let c = 0; c < cols && r * cols + c < nRight; c++) {
+          const i = r * cols + c;
+          nodes.push({ t: "load", i, x: groupX + 9 + c * (cw + 10), y, w: cw, h: ch });
+          refs.push(["consumers", i]);
+        }
+        stubs.push({ y: y + ch / 2, x: groupX, ref: refs[0], refs });
+      }
+      rightBottom = rightY + gH;
+    } else {
+      for (let i = 0; i < nRight; i++) {
+        const y = rightY + i * (tileH + gap);
+        nodes.push({ t: "load", i, x: tileX, y, w: tileW, h: tileH });
+        stubs.push({ y: y + tileH / 2, x: tileX, ref: ["consumers", i] });
+      }
+      rightBottom = nRight ? rightY + nRight * (tileH + gap) - gap : (rightY > sideTop ? rightY - 16 : pad);
     }
-    const rightBottom = nRight ? rightY + nRight * (tileH + gap) - gap : (rightY > pad ? rightY - 16 : pad);
 
     if (stubs.length) {
       distribution.right = { x: trunkX, targets: stubs };
@@ -860,21 +966,24 @@
       const rows = Math.ceil(rest / cols);
       const top = Math.max(leftBottom, rightBottom, houseY + houseR) + lane + 26;
       const busY = top - 24;
+      // A short single row has room to spare, so its tiles grow (up to 35 %).
+      const grow = rows === 1 ? clamp((vbw - 2 * pad - 280) / (cols * (tileW + gap)), 1, 1.35) : 1;
+      const tw = Math.round(tileW * grow), th = Math.round(tileH * grow), tg = Math.round(gap * grow);
       for (let r = 0; r < rows; r++) {
         const n = Math.min(cols, rest - r * cols);
-        const rowW = n * tileW + (n - 1) * gap;
+        const rowW = n * tw + (n - 1) * tg;
         const x0 = Math.round((vbw - rowW) / 2);
-        const y = top + r * (tileH + gap + 26);
+        const y = top + r * (th + tg + 26);
         const bY = r === 0 ? busY : y - 24;
         const row = { y: bY, targets: [] };
         for (let c = 0; c < n; c++) {
           const idx = nRight + r * cols + c;
-          const x = x0 + c * (tileW + gap);
-          nodes.push({ t: "load", i: idx, x, y, w: tileW, h: tileH });
-          row.targets.push({ x: x + tileW / 2, y, left: x, width: tileW, ref: ["consumers", idx] });
+          const x = x0 + c * (tw + tg);
+          nodes.push({ t: "load", i: idx, x, y, w: tw, h: th, k: grow });
+          row.targets.push({ x: x + tw / 2, y, left: x, width: tw, ref: ["consumers", idx] });
         }
         distribution.rows.push(row);
-        vbh = y + tileH + pad;
+        vbh = y + th + pad;
       }
     }
     return { vbw, vbh: Math.round(vbh), nodes, links, centerX, houseY, distribution };
@@ -905,10 +1014,14 @@
             rightMax: sc < 1 ? P.rightMax + 2 : P.rightMax,
           });
           const maxCols = Math.max(1, Math.floor((Q.vbw - 2 * Q.pad + Q.gap) / (Q.tileW + Q.gap)));
-          const maxRight = Math.min(Q.rightMax, nC);
+          const maxRight = Math.min(P.consumers === "group" ? Q.rightMax * 2
+            : P.consumers === "auto" ? Q.rightMax : 0, nC);
           for (let right = maxRight; right >= 0; right--) {
             const rest = nC - right;
-            const colOptions = rest > 0
+            // With the consumers underneath, a few of them stay on one row
+            // (where they grow) rather than being stacked to save width.
+            const colOptions = rest > 0 && P.consumers !== "auto" && rest <= maxCols ? [rest]
+              : rest > 0
               ? Array.from(new Set([maxCols, Math.min(rest, maxCols), Math.ceil(rest / 2),
                                     Math.ceil(rest / 3), Math.ceil(rest / 4)]))
                   .filter((c) => c >= 1 && c <= maxCols)
@@ -937,7 +1050,10 @@
     // tiles sit side by side but makes everything smaller on screen.
     let best = search([1]);
     if (best && best.aspect < targetAspect * 0.93) {
-      const wide = search([1.12, 1.25, 1.4, 1.6, 1.8]);
+      // Kept modest on purpose: a much wider canvas only spreads the same
+      // boxes apart and shrinks them on screen, so on a big or full-screen
+      // view the drawing grows as a whole instead and keeps its layout.
+      const wide = search([1.1, 1.2]);
       if (wide && wide.err < best.err) best = wide;
     }
     best.L.scale = best.scale;
@@ -1046,7 +1162,7 @@
   function consumerNetwork(L) {
     const house = L.nodes.find(n => n.t === "house");
     const { right, rows, gap } = L.distribution;
-    const refs = targets => targets.map(t => t.ref);
+    const refs = targets => targets.flatMap(t => t.refs || [t.ref]);
     const edge = (from, to, targets, parent, straight = true) => {
       if (from.x === to.x && from.y === to.y) return parent;
       const index = L.links.length;
@@ -1063,7 +1179,7 @@
         side.forEach((target, i) => {
           const junction = { ...origin, [axis]: target[axis] };
           const feed = edge(from, junction, refs(side.slice(i)), previous);
-          edge(junction, { x: target.x, y: target.y }, [target.ref], feed);
+          edge(junction, { x: target.x, y: target.y }, target.refs || [target.ref], feed);
           from = junction;
           previous = feed;
         });
@@ -1091,6 +1207,15 @@
       });
     }
     return L;
+  }
+
+  // A consumer that just switched off stays on screen for a minute, so devices
+  // that cycle (fridge, pump) don't make the whole layout jump back and forth.
+  const IDLE_HOLD_MS = 60000;
+  function idleFor(seen, entity, idle, now) {
+    if (!idle) { seen.set(entity, now); return false; }
+    const last = seen.get(entity);
+    return last == null || now - last > IDLE_HOLD_MS;
   }
 
   function liveFlow(link, data) {
@@ -1160,6 +1285,13 @@
                     - (Math.abs(a.k.to.x - a.k.from.x) + Math.abs(a.k.to.y - a.k.from.y)));
 
     order.forEach(({ k }) => {
+      if (k.fixed) {
+        // hand-placed lanes that are known to be clear (left column feeds)
+        const pts = simplify([k.from, { x: k.viaX, y: k.from.y }, { x: k.viaX, y: k.to.y }, k.to]);
+        k.d = toPath(pts, Math.max(9, cell));
+        placed.push(pts);
+        return;
+      }
       if (k.straight) {
         k.d = `M ${k.from.x} ${k.from.y} L ${k.to.x} ${k.to.y}`;
         placed.push([k.from, k.to]);
@@ -1310,6 +1442,11 @@
     .glass { fill: var(--sc-tile); stroke: var(--sc-tile-line); stroke-width:1; }
     .pv-group { fill: var(--sc-pv-fill); stroke: var(--sc-pv-line); stroke-width:1.3;
                 filter: var(--sc-pv-glow); }
+    /* While the panels produce, the PV band glows warm like sunlight. */
+    .pv-group.producing { stroke: rgba(255,176,64,.75);
+      filter: drop-shadow(0 0 10px rgba(255,150,40,.45)) drop-shadow(0 0 26px rgba(255,140,30,.22));
+      animation: pvSun 4s ease-in-out infinite; }
+    @keyframes pvSun { 50% { filter: drop-shadow(0 0 14px rgba(255,160,50,.6)) drop-shadow(0 0 34px rgba(255,140,30,.3)); } }
     .pv-cell { fill: var(--sc-cell-fill); stroke: var(--sc-pv-line); stroke-width:1; opacity:.8; }
     .pv-title { fill:var(--sc-ink); font-size:14px; font-weight:650; letter-spacing:.13em; }
     .pv-total { fill:var(--sc-ink); font-size:20px; font-weight:750; stroke:var(--sc-halo); stroke-width:4px; }
@@ -1412,7 +1549,7 @@
     .pulse { opacity:1; }
     .clickable { cursor:pointer; }
     @media (prefers-reduced-motion: reduce) {
-      .dash, .run, .wire-core.live, .pulse { animation:none; }
+      .dash, .run, .wire-core.live, .pulse, .pv-group.producing { animation:none; }
     }`;
 
   // -------------------------------------------------------------- svg pieces
@@ -1501,6 +1638,11 @@
   // Whether the light scheme is active. Read by icon()/artwork(), which are
   // plain functions outside the element and so cannot reach the config.
   let LIGHT = false;
+  // Text boost for the current frame. The drawing is scaled to the card width,
+  // so on a tablet or a narrow column every font shrinks with it; the key
+  // figures are drawn larger in drawing units to stay readable on screen.
+  let TB = 1;
+  const fz = (px, cap) => Math.round(px * Math.min(TB, cap || 9) * 10) / 10;
 
   /** Fit a label to the tile width by shrinking the font, then ellipsising. */
   function fitText(txt, maxW, fontSize) {
@@ -1598,14 +1740,16 @@
     const cx = n.x + n.w / 2;
     const k = o.scale == null ? 1 : o.scale;             // tile scale factor
     const size = Math.round((o.iconSize || 28) * k);
-    const fLabel = Math.max(9, Math.round(13 * k));
-    const fVal = Math.max(11, Math.round(17 * k));
-    const fSub = Math.max(8, Math.round(12 * k));
+    const fLabel = fz(Math.max(9, Math.round(13 * k)), 1.3);
+    const fVal = fz(Math.max(11, Math.round(17 * k)));
+    const fSub = fz(Math.max(8, Math.round(12 * k)), 1.3);
     const padTop = Math.round(8 * k);
     const inner = n.w - 12;
     const subY = n.y + n.h - Math.round(8 * k);
-    const labelY = o.sub ? subY - fSub - fVal - 3 : n.y + n.h - Math.round(30 * k);
-    const valueY = o.sub ? subY - fSub - 3 : n.y + n.h - Math.round(11 * k);
+    // Stacked from the bottom edge by the actual font sizes, so boosted text
+    // never runs into the line above it.
+    const valueY = o.sub ? subY - fSub - 3 : n.y + n.h - Math.round(10 * k);
+    const labelY = valueY - Math.round(fVal * 0.95) - 3;
     // photos read poorly at glyph size, so grow them into the free space above
     // the label while keeping a small breathing gap
     const artMax = labelY - fLabel - (n.y + padTop) - 4;
@@ -1689,28 +1833,30 @@ function step1Fit(text, width, size, weight) {
 
 function step1Grid(n,d,config) {
   const compact=n.compact;
-  const size=compact?16:26, labelSize=compact?11:16;
+  const size=fz(compact?16:26,1.3), labelSize=fz(compact?11:16,1.25);
   const value=fmtW(d.gridDisplayValue);
   const name=d.gridDisplayValue == null ? T("Netz nicht verfügbar")
     : d.gridDisplayValue > 0 ? T("Netzbezug")
     : d.gridDisplayValue < 0 ? T("Einspeisung") : config.name || T("Netz");
   const image=step1Image(config,LIGHT) || "builtin:grid";
-  const left=n.x+(compact?61:111), room=n.x+n.w-left-12;
-  const imgW=compact?45:86, imgH=compact?60:102;
+  // a wider box spends its extra room on a larger pylon
+  const art=compact?1:clamp(n.w/252,1,1.25);
+  const left=n.x+Math.round((compact?61:111)*art), room=n.x+n.w-left-12;
+  const imgW=Math.round((compact?45:86)*art), imgH=Math.round((compact?60:102)*art);
   const body=`<g class="clickable step1-grid" data-entity="${esc(config.entity)}">
     <rect class="glass" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="16"/>
     ${artwork(n.x+12,n.y+9,imgH,image,config.icon||"mdi:transmission-tower", "#7fd4ff",undefined,imgW)}
-    <text class="step1-grid-label" x="${left}" y="${n.y+(compact?24:31)}"
+    <text class="step1-grid-label" x="${left}" y="${n.y+Math.round(labelSize*(compact?1.9:1.85))}"
       style="font-size:${step1Fit(name,room,labelSize,600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(name)}</text>
-    <text class="step1-grid-value" x="${left}" y="${n.y+(compact?46:65)}"
+    <text class="step1-grid-value" x="${left}" y="${n.y+Math.round(labelSize*(compact?1.9:1.85)+size*(compact?1.3:1.25))}"
       style="font-size:${step1Fit(value,room,size,700)}px;font-weight:700">${esc(value)}</text>
     ${!compact?`<path d="M ${n.x+16} ${n.y+113} H ${n.x+n.w-16}" stroke="var(--sc-tile-line)" stroke-width="1"/>`:""}
-    ${config.import_today?`<text class="step1-grid-daily" x="${n.x+14}" y="${n.y+(compact?90:134)}" style="font-size:${compact?9:12}px;fill:var(--sc-ink-soft)">${T("Bezug heute")}</text>
+    ${config.import_today?`<text class="step1-grid-daily" x="${n.x+14}" y="${n.y+(compact?90:134)}" style="font-size:${(compact?9:fz(12,1.2))}px;fill:var(--sc-ink-soft)">${T("Bezug heute")}</text>
       <text x="${n.x+n.w-14}" y="${n.y+(compact?90:134)}" text-anchor="end"
-       style="font-size:${compact?10:13}px">${esc(fmtKWh(d.gridImportToday))}</text>`:""}
-    ${config.export_today?`<text class="step1-grid-daily" x="${n.x+14}" y="${n.y+(compact?109:155)}" style="font-size:${compact?9:12}px;fill:var(--sc-ink-soft)">${T("Einspeisung")}</text>
+       style="font-size:${(compact?10:fz(13,1.2))}px">${esc(fmtKWh(d.gridImportToday))}</text>`:""}
+    ${config.export_today?`<text class="step1-grid-daily" x="${n.x+14}" y="${n.y+(compact?109:155)}" style="font-size:${(compact?9:fz(12,1.2))}px;fill:var(--sc-ink-soft)">${T("Einspeisung")}</text>
       <text x="${n.x+n.w-14}" y="${n.y+(compact?109:155)}" text-anchor="end"
-       style="font-size:${compact?10:13}px">${esc(fmtKWh(d.gridExportToday))}</text>`:""}
+       style="font-size:${(compact?10:fz(13,1.2))}px">${esc(fmtKWh(d.gridExportToday))}</text>`:""}
   </g>`;
   return body;
 }
@@ -1722,11 +1868,18 @@ function step1Battery(x,y,w,h,b,compact) {
   const state=b.powerValue==null?"":T(b.charging?"lädt":b.active?"entlädt":"hält");
   const power=`${fmtW(b.powerValue)}${state?" · "+state:""}`;
   const image=step1Image(b,LIGHT) || "builtin:battery";
-  const artW=compact?31:57, artH=compact?44:59;
+  const art=compact?1:clamp(w/234,1,1.2);
+  const artW=Math.round((compact?31:57)*art), artH=Math.min(h-10,Math.round((compact?44:59)*art));
   const artX=x+w-artW-10, textX=x+(compact?29:36);
   const room=artX-textX-7;
   const soc=b.socValue==null?"–":Math.round(level)+" %";
   // charge level in green while charging, red while discharging, neutral at rest
+  // The three lines share the box height; larger text is only taken as far
+  // as it still fits between the top edge and the power line at the bottom.
+  const fit=Math.min(1,(h-20)/(fz(compact?17:23,1.25)*0.95+fz(compact?11:14,1.25)*2.1+6));
+  const fSoc=Math.max(compact?17:23,fz(compact?17:23,1.25)*fit);
+  const fName=Math.max(compact?11:14,fz(compact?11:14,1.25)*fit), fPow=fName;
+  const socY=y+Math.round(5+fSoc*0.95), nameY=Math.min(socY+Math.round(fName*1.25), y+h-12-fPow);
   const socFill=b.charging?inkify("#22e6a4",LIGHT):b.active?inkify("#ff5d6c",LIGHT):"currentColor";
   const barW=compact?8:11,barH=compact?36:45,barX=x+12,barY=y+10;
   return `<g class="step1-battery clickable" data-entity="${esc(b.soc||b.power)}">
@@ -1734,12 +1887,12 @@ function step1Battery(x,y,w,h,b,compact) {
     <rect class="socbar-bg" x="${barX}" y="${barY}" width="${barW}" height="${barH}" rx="4"/>
     <rect x="${barX}" y="${barY+barH*(1-level/100)}" width="${barW}" height="${barH*level/100}" rx="4" fill="${inkify(accent,LIGHT)}"/>
     ${artwork(artX,y+5,artH,image,b.icon||"mdi:battery",accent,undefined,artW)}
-    <text class="step1-battery-soc" x="${textX}" y="${y+(compact?26:31)}"
-      style="font-size:${step1Fit(soc,room,compact?17:23,700)}px;font-weight:700;fill:${socFill}">${esc(soc)}</text>
-    <text class="step1-battery-name" x="${textX}" y="${y+(compact?44:51)}"
-      style="font-size:${step1Fit(label,room,compact?11:14,600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(label)}</text>
+    <text class="step1-battery-soc" x="${textX}" y="${socY}"
+      style="font-size:${step1Fit(soc,room,fSoc,700)}px;font-weight:700;fill:${socFill}">${esc(soc)}</text>
+    <text class="step1-battery-name" x="${textX}" y="${nameY}"
+      style="font-size:${step1Fit(label,room,fName,600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(label)}</text>
     <text class="step1-battery-power" x="${textX}" y="${y+h-11}"
-      style="font-size:${step1Fit(power,x+w-10-textX,compact?11:14,650)}px;font-weight:650">${esc(power)}</text>
+      style="font-size:${step1Fit(power,x+w-10-textX,fPow,650)}px;font-weight:650">${esc(power)}</text>
   </g>`;
 }
 
@@ -1784,10 +1937,11 @@ function step1Battery(x,y,w,h,b,compact) {
       : v.image === "none" ? "none"
       : v.image ? v.image
       : v.plugged ? "builtin:ev-plugged" : "builtin:ev";
-    const big = compact ? 30 : 28, kpi = compact ? 20 : 18, mid = 13, small = 12;
+    const tv = Math.min(TB, 1.25);
+    const big = fz(compact ? 30 : 28, 1.25), kpi = fz(compact ? 20 : 18, 1.25), mid = fz(13, 1.25), small = fz(12, 1.2);
     const metrics = v.metricValues || [];
     const mRows = vehicleMetricRows(v, w);
-    const textTop = y + h - 20 - mRows * 40 - 62;
+    const textTop = y + h - 20 - mRows * 40 - Math.round(62 * tv);
     const artX = x + 8, artY = y + 8, artW = w - 16, artH = textTop - artY - 6;
     const soc = v.socValue == null ? "–" : Math.round(level) + " %";
     const dur = v.charging ? fmtDuration(v.timeToFull) : null;
@@ -1801,8 +1955,12 @@ function step1Battery(x,y,w,h,b,compact) {
         style="stroke:${inkify(accent, LIGHT)}"/>${icon(bx - 10, by - 10, 20, "mdi:ev-plug-type-2", accent, accent + "aa")}</g>`;
     }
     // the two key figures: charge level left, charging power (or status) right
-    const right1 = v.charging ? fmtW(v.powerValue) : status;
-    const right2 = v.charging ? [status, dur].filter(Boolean).join(" · ") : "";
+    // A narrow panel can't hold the charge level and the status side by side
+    // at a readable size, so the status joins the bottom line instead.
+    const tight = half < 90;
+    const right1 = tight ? "" : v.charging ? fmtW(v.powerValue) : status;
+    const right2 = tight ? "" : v.charging ? [status, dur].filter(Boolean).join(" · ") : "";
+    const line3 = tight ? [v.charging ? fmtW(v.powerValue) : range, status].filter(Boolean).join(" · ") : range;
     let row = "";
     if (metrics.length) {
       const cols = Math.ceil(metrics.length / mRows), cw = (w - 16) / cols, mTop = textTop + 66;
@@ -1824,16 +1982,16 @@ function step1Battery(x,y,w,h,b,compact) {
           preserveAspectRatio="xMidYMid ${fit}" clip-path="url(#${id})"/>
         <rect class="ev-photo-frame" x="${artX}" y="${artY}" width="${artW}" height="${artH}" rx="10"/>`;
       })() : artwork(artX, artY, artH, image, v.icon || "mdi:car-electric", accent, undefined, artW)}${badge}
-      <text class="ev-soc" x="${lx}" y="${textTop + 24}"
-        style="font-size:${step1Fit(soc, half, big, 700)}px;font-weight:700">${esc(soc)}</text>
-      <text x="${rx}" y="${textTop + 24}" text-anchor="end"
-        style="font-size:${step1Fit(right1, half + 6, v.charging ? kpi : 14, 700)}px;font-weight:700;fill:${v.charging ? green : "currentColor"}">${esc(right1)}</text>
-      <text x="${lx}" y="${textTop + 44}"
-        style="font-size:${step1Fit(v.name || "", half, mid, 600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(v.name || "")}</text>
-      ${right2 ? `<text x="${rx}" y="${textTop + 44}" text-anchor="end"
+      <text class="ev-soc" x="${lx}" y="${textTop + Math.round(24 * tv)}"
+        style="font-size:${step1Fit(soc, tight ? w - 24 : half, big, 700)}px;font-weight:700">${esc(soc)}</text>
+      <text x="${rx}" y="${textTop + Math.round(24 * tv)}" text-anchor="end"
+        style="font-size:${step1Fit(right1, half + 6, v.charging ? kpi : fz(14, 1.25), 700)}px;font-weight:700;fill:${v.charging ? green : "currentColor"}">${esc(right1)}</text>
+      <text x="${lx}" y="${textTop + Math.round(44 * tv)}"
+        style="font-size:${step1Fit(v.name || "", tight ? w - 24 : half, mid, 600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(v.name || "")}</text>
+      ${right2 ? `<text x="${rx}" y="${textTop + Math.round(44 * tv)}" text-anchor="end"
         style="font-size:${step1Fit(right2, half + 6, mid, 650)}px;font-weight:650;fill:${green}">${esc(right2)}</text>` : ""}
-      ${range ? `<text x="${lx}" y="${textTop + 60}"
-        style="font-size:${step1Fit(range, w - 24, small, 600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(range)}</text>` : ""}
+      ${line3 ? `<text x="${lx}" y="${textTop + Math.round(60 * tv)}"
+        style="font-size:${step1Fit(line3, w - 24, small, 600)}px;font-weight:600;fill:${tight && v.charging ? green : "var(--sc-ink-soft)"}">${esc(line3)}</text>` : ""}
       ${row}
       <rect class="socbar-bg" x="${barX}" y="${barY}" width="${barW}" height="5" rx="2.5"/>
       <rect x="${barX}" y="${barY}" width="${(barW * level / 100).toFixed(1)}" height="5" rx="2.5" fill="${inkify(accent, LIGHT)}"/>
@@ -2062,6 +2220,8 @@ function step1Battery(x,y,w,h,b,compact) {
         return { ...cl, value: p, stateText: st ? hass.formatEntityState(st) : null, active: on,
                  metricValues: (cl.metrics || []).map((m) => ({ ...m, value: num(hass, m.entity) })) };
       });
+      const now = Date.now();
+      const seen = this._seenActive || (this._seenActive = new Map());
       const consumers = c.consumers.filter((x) => !x.hidden).map((x) => {
         const v = num(hass, x.entity);
         const unit = x.unit || "W";
@@ -2076,7 +2236,8 @@ function step1Battery(x,y,w,h,b,compact) {
         return { ...x, value: standby ? 0 : v, text: fmtBy(unit, standby ? 0 : v),
                  standby,
                  active: unit === "W" && v != null && v > tol,
-                 hideZero: x.hide_when_zero && (v == null || Math.abs(v) <= tol),
+                 hideZero: !x.always_show && (c.consumers_auto_hide !== false || x.hide_when_zero)
+                   && idleFor(seen, x.entity, unit === "W" ? v == null || Math.abs(v) <= tol : !v, now),
                  secondaryText: x.secondary?.entity
                    ? `${x.secondary.label || ""} ${fmtBy(x.secondary.unit || "W", num(hass, x.secondary.entity))}`.trim()
                    : null };
@@ -2128,7 +2289,7 @@ function step1Battery(x,y,w,h,b,compact) {
       LIGHT = ((this._config && this._config.theme) || {}).mode === "hell";
       const d = this._data();
       const mode = this._mode || "mid";
-      const P = MODES[mode];
+      const P = { ...MODES[mode], climate: this._config.layout.climate, consumers: this._config.layout.consumers };
 
       // Work out how tall the drawing may be, then aim the layout at exactly
       // that shape. Fitting the target instead of scaling down afterwards
@@ -2171,6 +2332,10 @@ function step1Battery(x,y,w,h,b,compact) {
       }
       const L = this._layout;
       this._room = room;
+      // How many screen pixels one drawing unit gets; below 1 the text is
+      // grown back so it never ends up smaller than designed.
+      const px = cardW && L.vbw ? cardW / L.vbw : 1;
+      TB = clamp(1.04 / px, 1, 1.45) * clamp(Number(this._config.layout.text_scale) || 1, 0.7, 1.6);
       const PS = Object.assign({}, P, { scale: L.scale == null ? 1 : L.scale });
       const stage = this.shadowRoot.getElementById("stage");
 
@@ -2183,7 +2348,7 @@ function step1Battery(x,y,w,h,b,compact) {
       let knock = "";
       L.links.forEach((link, i) => {
         const k = { ...link, ...liveFlow(link, d) };
-        if (k.label) k.label = { ...k.label, text: fmtW(d.pvTotal) };
+        if (k.label) k.label = { ...k.label, text: fmtW(d.pvTotal), size: fz(k.label.size, 1.3) };
         const w = `<g data-flow="${i}" data-flow-kind="${k.flow.type}"
           data-flow-on="${k.on}" data-flow-reverse="${!!k.rev}">${
           wireSvg(k.d, k.cls, k.on, k.rev, k.distance, wireStyle)}</g>`;
@@ -2217,7 +2382,7 @@ function step1Battery(x,y,w,h,b,compact) {
           s += `<rect class="label-chip" x="${b.x}" y="${b.y}" width="${b.w}"
                       height="${b.h}" rx="${(b.h / 2).toFixed(1)}"/>`;
         }
-        s += `<text class="${l.cls}" x="${l.x}" y="${l.y}" text-anchor="middle">${esc(l.text === undefined ? fmtW(d.pvTotal) : l.text)}</text>`;
+        s += `<text class="${l.cls}" x="${l.x}" y="${l.y}" text-anchor="middle" style="font-size:${l.size}px">${esc(l.text === undefined ? fmtW(d.pvTotal) : l.text)}</text>`;
       });
       s += `</svg>`;
       // Home Assistant pushes a state update several times a second. Replacing
@@ -2273,7 +2438,7 @@ function step1Battery(x,y,w,h,b,compact) {
             <g class="${c.home.entity ? "clickable" : ""}"${c.home.entity ? ` data-entity="${esc(c.home.entity)}"` : ""}>
             <circle class="center" cx="${n.x}" cy="${n.y}" r="${n.r}" fill="${LIGHT ? "rgba(255,255,255,0.82)" : "rgba(16,28,52,0.85)"}" stroke="${LIGHT ? "rgba(255,255,255,0.95)" : "rgba(120,190,255,0.5)"}" stroke-width="1.5"/>
             ${artwork(n.x - size * .6, n.y - size / 2 - 9, size, img, c.home.icon || "mdi:home-lightning-bolt", "#7fd4ff", "rgba(0,190,255,.6)", size * 1.2)}
-            <text x="${n.x}" y="${n.y + n.r - 12}" text-anchor="middle" font-size="${Math.round(n.r * (d.home == null ? 0.19 : 0.28))}" font-weight="700">${d.home == null ? T("Unvollständig") : esc(fmtW(d.home))}</text></g>`;
+            <text x="${n.x}" y="${n.y + n.r - 12}" text-anchor="middle" font-size="${fz(n.r * (d.home == null ? 0.19 : 0.28), 1.3)}" font-weight="700">${d.home == null ? T("Unvollständig") : esc(fmtW(d.home))}</text></g>`;
         }
         case "grid": return step1Grid(n,d,c.grid);
         case "storage": {
@@ -2293,12 +2458,16 @@ function step1Battery(x,y,w,h,b,compact) {
         }
         case "vehicle": return d.vehicles[n.i] ? vehicleSvg(n.x, n.y, n.w, n.h, d.vehicles[n.i], true) : "";
         case "climate": return this._climateGroup(n, d);
+        case "loadgroup":
+          return `<g class="pulse"><rect class="group-frame" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="18"/>
+            ${icon(n.x + 12, n.y + 9, 20, "mdi:power-plug", "#60a5fa", "rgba(96,165,250,.7)")}
+            <text class="group-title" x="${n.x + 39}" y="${n.y + 25}">${T("VERBRAUCHER")}</text></g>`;
         case "load": {
           const l = d.consumers[n.i];
           if (!l) return "";
           return tileSvg(n, { label: l.name || l.entity, value: l.text, sub: l.secondaryText,
             image: l.image, icon: l.icon, color: l.color || "#7fd4ff",
-            glow: (l.color || "#37c8ff") + "88", iconSize: 26, entity: l.entity, scale: P.scale });
+            glow: (l.color || "#37c8ff") + "88", iconSize: 26, entity: l.entity, scale: (P.scale || 1) * (n.k || 1) });
         }
         case "stacktile": {
           const t = d.stackTiles[n.i];
@@ -2326,7 +2495,7 @@ function step1Battery(x,y,w,h,b,compact) {
         <stop offset="1" stop-color="${light ? "#d8e9f5" : "#112240"}" stop-opacity=".75"/>
       </linearGradient>
     </defs>
-    <rect class="pv-group" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="18"/>
+    <rect class="pv-group${d.pvTotal > 5 ? " producing" : ""}" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="18"/>
     <text class="pv-title" x="${n.x + 18}" y="${n.y + 26}">${T("PV-TOTAL")}</text>`;
   if (d.pvEnergy.entity) {
     const label = T("Ertrag heute") + " " + fmtPvEnergy(d.pvEnergy.value);
@@ -2362,15 +2531,21 @@ function step1Battery(x,y,w,h,b,compact) {
   const ends = [];
   const energyTexts = d.solar.map(p => T("Heute") + " " + fmtPvEnergy(p.energyToday));
   const energySize = Math.min(...d.solar.filter(p => p.energy_today)
-    .map(p => step1Fit(T("Heute") + " " + fmtPvEnergy(p.energyToday), n.cellW - 16, n.compact ? 13 : 14, 600)), 14);
+    .map(p => step1Fit(T("Heute") + " " + fmtPvEnergy(p.energyToday), n.cellW - 16, fz(n.compact ? 13 : 14, 1.2), 600)), fz(14, 1.2));
+  // Name, value and yield are stacked up from the bottom of the cell so larger
+  // text takes its room from the artwork rather than overlapping.
+  const fName = fz(n.compact ? 12 : 13, 1.25);
+  const fValue = Math.min(...d.solar.map(p => step1Fit(fmtW(p.value), n.cellW - 12, fz(n.compact ? 17 : 20, 1.3), 700)));
+  const anyYield = d.solar.some(p => p.energy_today);
   for (let i = 0; i < d.solar.length; i++) {
     const p = d.solar[i];
     const image = resolveImage((light && p.image_light ? p.image_light : p.image) || "builtin:solar-roof");
     const row = Math.floor(i / n.perRow), col = i % n.perRow;
     const x = start + col * (n.cellW + n.cellGap), y = top + row * (n.cellH + 8);
     const cx = x + n.cellW / 2;
-    const artH = n.compact ? 62 : 68;
-    const nameY = y + (n.compact ? 80 : 86), valueY = y + (n.compact ? 100 : 110);
+    const valueY = y + n.cellH - (anyYield ? energySize + 14 : 12);
+    const nameY = valueY - fValue - 3;
+    const artH = Math.min(n.compact ? 62 : 68, nameY - fName - y - 6);
     const artW = Math.min(n.cellW - 12, artH * 1.5);
     svg += `<g data-entity="${esc(p.entity)}" class="clickable">
       <rect class="pv-cell" x="${x}" y="${y}" width="${n.cellW}" height="${n.cellH}" rx="13"
@@ -2379,11 +2554,11 @@ function step1Battery(x,y,w,h,b,compact) {
       ${image ? `<image href="${esc(image)}" x="${cx - artW / 2}" y="${y + 3}" width="${artW}" height="${artH}" preserveAspectRatio="xMidYMid meet"/>`
         : icon(cx - 20, y + 14, 40, p.icon || "mdi:solar-panel", tint, undefined, REDRAW)}
       <text class="pv-pilot-name" x="${cx}" y="${nameY}" text-anchor="middle"
-        style="font-size:${n.compact ? 12 : 13}px;font-weight:600;fill:${muted}">${esc(p.name)}</text>
+        style="font-size:${step1Fit(p.name || "", n.cellW - 12, fName, 600)}px;font-weight:600;fill:${muted}">${esc(p.name)}</text>
       <text class="pv-pilot-value" x="${cx}" y="${valueY}" text-anchor="middle"
-        style="font-size:${n.compact ? 17 : 20}px;font-weight:700;fill:${text}">${esc(fmtW(p.value))}</text>
+        style="font-size:${fValue}px;font-weight:700;fill:${text}">${esc(fmtW(p.value))}</text>
       ${p.energy_today ? `<g class="clickable pv-array-yield" data-entity="${esc(p.energy_today)}">
-        <text class="pv-pilot-energy" x="${cx}" y="${valueY + 22}" text-anchor="middle"
+        <text class="pv-pilot-energy" x="${cx}" y="${valueY + energySize + 7}" text-anchor="middle"
           style="font-size:${energySize}px;font-weight:600;fill:${muted}">${esc(energyTexts[i])}</text>
       </g>` : ""}
     </g>`;
@@ -2402,17 +2577,23 @@ function step1Battery(x,y,w,h,b,compact) {
       let s = `<g class="pulse"><rect class="group-frame" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="18"/>
         ${icon(n.x + 12, n.y + 9, 20, "mdi:snowflake-thermometer", "#60a5fa", "rgba(96,165,250,.7)")}
         <text class="group-title" x="${n.x + 39}" y="${n.y + 25}">${T("KLIMA")}</text>`;
-      const cx = n.x + 9, cw = n.w - 18;
+      // wider boxes get a larger unit icon and push the text over to match
+      const ico = Math.round(clamp(n.w / 7, 28, 40)), tx = ico + 16;
+      const cx = n.x + 9, cw = n.w - 18, room = cw - tx - 8;
+      const fN = fz(13, 1.25), fS = fz(12, 1.25), fM = fz(11, 1.2);
       d.climate.forEach((c, i) => {
+        const name = c.name || "";
         const y = n.y + 42 + i * (n.cellH + 10);
         const ent = c.entity || c.state_entity;
         s += `<g class="${ent ? "clickable" : ""}"${ent ? ` data-entity="${esc(ent)}"` : ""}>
           <rect class="group-cell" x="${cx}" y="${y}" width="${cw}" height="${n.cellH}" rx="11"/>
-          ${artwork(cx + 8, y + 10, 28, c.image, c.icon || "mdi:air-conditioner", "#7dd3fc", "rgba(56,189,248,.55)")}
-          <text class="cell-name" x="${cx + 42}" y="${y + 18}">${esc(c.name || "")}</text>
-          <text class="cell-state" x="${cx + 42}" y="${y + 36}">${esc(c.value == null ? (c.stateText || "–") : fmtW(c.value))}</text>`;
+          ${artwork(cx + 8, y + 10, ico, c.image, c.icon || "mdi:air-conditioner", "#7dd3fc", "rgba(56,189,248,.55)")}
+          <text class="cell-name" x="${cx + tx}" y="${y + 4 + fN}" style="font-size:${step1Fit(name, room, fN, 700)}px">${esc(name)}</text>
+          <text class="cell-state" x="${cx + tx}" y="${y + 8 + fN + fS}" style="font-size:${fS}px">${esc(c.value == null ? (c.stateText || "–") : fmtW(c.value))}</text>`;
         c.metricValues.slice(0, 2).forEach((m, j) => {
-          s += `<text class="cell-metric" x="${cx + 42}" y="${y + 57 + j * 16}">${esc(m.label || "")} ${esc(fmtBy(m.unit || "kWh", m.value))}</text>`;
+          const t = `${m.label || ""} ${fmtBy(m.unit || "kWh", m.value)}`;
+          s += `<text class="cell-metric" x="${cx + tx}" y="${y + n.cellH - 7 - (Math.min(2, c.metricValues.length) - 1 - j) * (fM + 3)}"
+            style="font-size:${step1Fit(t, room, fM, 600)}px">${esc(t)}</text>`;
         });
         s += `</g>`;
       });
@@ -2712,6 +2893,16 @@ function step1Battery(x,y,w,h,b,compact) {
           { value: "never", label: "Nie (natürliche Höhe)" },
         ] } } },
         { name: "bottom_gap", label: "Abstand nach unten (px)", selector: SEL.num(0, 200, 2) },
+        { name: "climate", label: "Klima-Position", selector: { select: { mode: "dropdown", options: [
+          { value: "right", label: "Rechts unter dem E-Auto (Standard)" },
+          { value: "left", label: "Links über dem Netz" },
+        ] } } },
+        { name: "consumers", label: "Verbraucher-Anordnung", selector: { select: { mode: "dropdown", options: [
+          { value: "bottom", label: "Unten in Reihen (Standard)" },
+          { value: "group", label: "Rechts als Gruppe" },
+          { value: "auto", label: "Rechte Spalte zuerst, Rest unten" },
+        ] } } },
+        { name: "text_scale", label: "Schriftgröße (%)", selector: SEL.num(70, 160, 5) },
       ] },
       { name: "keep_awake", label: "Bildschirm wachhalten", selector: { select: { mode: "dropdown", options: [
         { value: "off", label: "Aus" },
@@ -2846,7 +3037,7 @@ function step1Battery(x,y,w,h,b,compact) {
       ] },
       { type: "grid", column_min_width: "220px", schema: [
         { name: "hidden", label: "Ausblenden", selector: SEL.bool },
-        { name: "hide_when_zero", label: "Bei 0 W ausblenden", selector: SEL.bool },
+        { name: "always_show", label: "Immer anzeigen", selector: SEL.bool },
       ] },
       { title: "Zweite Zeile (z. B. Tagesverbrauch)", name: "secondary",
         type: "expandable", icon: "mdi:text-short", schema: [
@@ -3352,7 +3543,9 @@ function step1Battery(x,y,w,h,b,compact) {
     _formData() {
       const c = this._config;
       return { title: c.title, mode: c.layout.mode, wide_min: c.layout.wide_min, mid_min: c.layout.mid_min,
-               fit_height: c.layout.fit_height, bottom_gap: c.layout.bottom_gap, keep_awake: c.keep_awake || "off" };
+               fit_height: c.layout.fit_height, bottom_gap: c.layout.bottom_gap, keep_awake: c.keep_awake || "off",
+               climate: c.layout.climate || "right", consumers: c.layout.consumers || "bottom",
+               text_scale: Math.round((Number(c.layout.text_scale) || 1) * 100) };
     }
 
     _renderOverview(root) {
@@ -3362,6 +3555,10 @@ function step1Battery(x,y,w,h,b,compact) {
           n.title = v.title;
           n.layout = { ...n.layout, mode: v.mode || "auto", wide_min: v.wide_min, mid_min: v.mid_min,
                        fit_height: v.fit_height, bottom_gap: v.bottom_gap };
+          if (v.climate === "left") n.layout.climate = "left"; else delete n.layout.climate;
+          if (v.consumers && v.consumers !== "bottom") n.layout.consumers = v.consumers; else delete n.layout.consumers;
+          const ts = Number(v.text_scale);
+          if (ts && ts !== 100) n.layout.text_scale = ts / 100; else delete n.layout.text_scale;
           if (v.keep_awake && v.keep_awake !== "off") n.keep_awake = v.keep_awake; else delete n.keep_awake;
         });
       });
@@ -3510,9 +3707,18 @@ function step1Battery(x,y,w,h,b,compact) {
       const hint = document.createElement("div");
       hint.className = "hint";
       hint.textContent = page.id === "consumers"
-        ? T("Reihenfolge bestimmt die Platzierung: die ersten füllen die rechte Spalte, der Rest die Reihen darunter.")
+        ? T("Mit den Pfeilen legst du die Reihenfolge der Kacheln fest.")
         : T("Mit den Pfeilen sortieren, mit dem Stift bearbeiten.");
       root.appendChild(hint);
+      if (page.id === "consumers") {
+        root.appendChild(this._form([{ name: "auto_hide", label: "Verbraucher ohne Verbrauch ausblenden", selector: SEL.bool }],
+          () => ({ auto_hide: this._config.consumers_auto_hide !== false }),
+          (v) => this._patch((n) => { if (v.auto_hide) delete n.consumers_auto_hide; else n.consumers_auto_hide = false; })));
+        const tip = document.createElement("div");
+        tip.className = "hint";
+        tip.textContent = T("Ohne Verbrauch werden Verbraucher ausgeblendet; mit der Pinnadel bleibt einer immer sichtbar.");
+        root.appendChild(tip);
+      }
 
       if (!arr.length) {
         const e = document.createElement("div");
@@ -3539,6 +3745,11 @@ function step1Battery(x,y,w,h,b,compact) {
           btns.appendChild(this._iconBtn(x.hidden ? "mdi:eye-off" : "mdi:eye",
             T(x.hidden ? "Einblenden" : "Ausblenden"),
             () => this._patch((n) => { n[page.id][i].hidden = !n[page.id][i].hidden; })));
+          btns.appendChild(this._iconBtn(x.always_show ? "mdi:pin" : "mdi:pin-off-outline",
+            T(x.always_show ? "Immer anzeigen" : "Nur bei Verbrauch anzeigen"),
+            () => this._patch((n) => {
+              if (n[page.id][i].always_show) delete n[page.id][i].always_show; else n[page.id][i].always_show = true;
+            })));
         }
         btns.appendChild(this._iconBtn("mdi:arrow-up", T("Nach oben"), () => this._move(page.id, i, -1), i === 0));
         btns.appendChild(this._iconBtn("mdi:arrow-down", T("Nach unten"), () => this._move(page.id, i, 1), i === arr.length - 1));

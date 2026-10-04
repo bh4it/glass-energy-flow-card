@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.3.2";
+  const CARD_VERSION = "1.4.0";
 
   // ------------------------------------------------------------------ i18n
   // The UI follows Home Assistant's language: German for "de", English

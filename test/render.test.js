@@ -244,7 +244,7 @@ test("idle consumers are hidden unless pinned", async () => {
   assert.deepEqual(await shown({ ...CONFIG, consumers_auto_hide: false }), ["Washer", "Dishwasher"]);
 });
 
-test("climate sits left of the house in the wide layout, unless moved right", async () => {
+test("climate sits right of the house in the wide layout, unless moved left", async () => {
   const side = async (config) => {
     const { page, errors } = await mount({ width: 1440, height: 900, config });
     try {
@@ -260,6 +260,6 @@ test("climate sits left of the house in the wide layout, unless moved right", as
       await page.close();
     }
   };
-  assert.equal(await side(CONFIG), "left");
-  assert.equal(await side({ ...CONFIG, layout: { climate: "right" } }), "right");
+  assert.equal(await side(CONFIG), "right");
+  assert.equal(await side({ ...CONFIG, layout: { climate: "left" } }), "left");
 });

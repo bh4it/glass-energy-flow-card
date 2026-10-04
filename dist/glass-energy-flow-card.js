@@ -161,8 +161,12 @@
     "Nur bei Verbrauch anzeigen": "Show only while drawing power",
     "Verbraucher ohne Verbrauch ausblenden": "Hide consumers that draw no power",
     "Klima-Position": "Climate position",
-    "Links über dem Netz (Standard)": "Left, above the grid (default)",
-    "Rechts über den Verbrauchern": "Right, above the consumers",
+    "Rechts unter dem E-Auto (Standard)": "Right, below the vehicle (default)",
+    "Links über dem Netz": "Left, above the grid",
+    "Verbraucher-Anordnung": "Consumer placement",
+    "Unten in Reihen (Standard)": "Rows below (default)",
+    "Rechts als Gruppe": "Group on the right",
+    "Rechte Spalte zuerst, Rest unten": "Right column first, rest below",
     "Schriftgröße (%)": "Text size (%)",
     "Ohne Verbrauch werden Verbraucher ausgeblendet; mit der Pinnadel bleibt einer immer sichtbar.": "Consumers without draw are hidden; pin one to keep it visible.",
     "Zweite Zeile (z. B. Tagesverbrauch)": "Second line (e.g. daily usage)",
@@ -190,7 +194,7 @@
     "Nichts angezeigt": "Nothing shown",
     "Zurück": "Back",
     "Optionales Bild im hellen Design": "Optional image for the light theme",
-    "Reihenfolge bestimmt die Platzierung: die ersten füllen die rechte Spalte, der Rest die Reihen darunter.": "The order sets the placement: the first ones fill the right column, the rest the rows below.",
+    "Mit den Pfeilen legst du die Reihenfolge der Kacheln fest.": "The arrows set the order of the tiles.",
     "Mit den Pfeilen sortieren, mit dem Stift bearbeiten.": "Sort with the arrows, edit with the pencil.",
     "Noch nichts konfiguriert — unten eine Entität auswählen.": "Nothing configured yet — pick an entity below.",
     "Einblenden": "Show",
@@ -743,21 +747,33 @@
    * @param split.cols   columns used by the consumer rows underneath
    */
   function layoutRing(P, d, split) {
-    const { vbw, pad, tileW, tileH, gap, houseR, leftW, lane } = P;
+    const { vbw, pad, tileW, tileH, gap, houseR, lane } = P;
     const nodes = [], links = [];
     const distribution = { right: null, rows: [], gap };
 
-    // With consumers out of the right column it mirrors the left one.
-    const climW = P.consumers === "bottom" || P.consumers === "group" ? leftW : tileW + 26;
+    // layout.consumers: "bottom" (default) keeps every consumer in the rows
+    // under the house, "group" frames them in the right column like the
+    // storage, "auto" fills the right column with tiles first. Unless it is
+    // "auto", both side columns share one, slightly wider, width.
+    const where = P.consumers || "bottom";
+    const sym = where !== "auto";
+    const leftW = sym ? Math.round(P.leftW * 1.1) : P.leftW;
+    const climW = sym ? leftW : tileW + 26;
     const climX = vbw - pad - climW;
     const leftX = pad;
     const centerX = Math.round((leftX + leftW + climX) / 2);
+
+    // With the storage at the top of the left column its feeds run down a
+    // lane between the column and the PV band, so that gap is widened.
+    const storageFirst = !(P.climate === "left" && d.climate.length) && d.batteries.length > 0;
+    const laneBase = leftX + leftW + 14;
+    const pvGap = 17 + (storageFirst ? d.batteries.length * 14 + 8 : 0);
 
     // ---- PV band (top, centred) ---------------------------------------
     const nS = d.solar.length;
     let pvBottom = pad, pvNode = null;
     if (nS) {
-      const maxPvW = climX - (leftX + leftW) - 34;
+      const maxPvW = climX - (leftX + leftW) - 2 * pvGap;
       const cellGap = 12, minCell = 110, maxCell = 172;
       const perRow = Math.max(1, Math.min(nS, Math.floor((maxPvW - 36 + cellGap) / (minCell + cellGap))));
       const cellW = clamp((maxPvW - 36 - (perRow - 1) * cellGap) / perRow, minCell, maxCell);
@@ -793,9 +809,9 @@
 
     // ---- climate, grid + storage on the left ------------------------------
     const gridW = leftW, gridH = 168;
-    // Climate sits in the left column above the grid unless layout.climate is
-    // "right": that frees the right column for consumers and keeps the card low.
-    const climLeft = P.climate !== "right" && d.climate.length > 0;
+    // Climate sits under the vehicle on the right unless layout.climate is
+    // "left", where it goes above the grid.
+    const climLeft = P.climate === "left" && d.climate.length > 0;
     const climCellH = 86;
     let gridY = houseY - Math.round(gridH / 2) - 26;
     let leftBottom = gridY;
@@ -830,38 +846,54 @@
       gridY = Math.max(gridY, climY + climH + 16);
       leftBottom = climY + climH;
     }
-    if (d.grid.entity) {
-      nodes.push({ t: "grid", x: leftX, y: gridY, w: gridW, h: gridH });
-      links.push({
-        from: { x: leftX + gridW, y: gridY + gridH / 2 }, to: housePort(house, "w", -18),
-        viaX: centerX - houseR - 18 - d.batteries.length * 16,
-        flow: { type: "grid" },
-      });
-      leftBottom = gridY + gridH;
-    }
-    if (d.batteries.length) {
-      const stY = leftBottom + 20, batH = P.batH;
-      const stH = 42 + d.batteries.length * (batH + 10) - 10 + 12;
+    const nB = d.batteries.length, batH = P.batH;
+    const stH = 42 + nB * (batH + 10) - 10 + 12;
+    // Storage on top (level with the vehicle) and the grid below it, unless
+    // the climate group has taken the top of the column.
+    const onHouse = (off) => ({ x: Math.round(centerX - Math.sqrt(houseR * houseR - off * off)), y: houseY + off });
+    const placeGrid = (y, port) => {
+      nodes.push({ t: "grid", x: leftX, y, w: gridW, h: gridH });
+      const mid = y + gridH / 2;
+      if (storageFirst && Math.abs(mid - houseY) < houseR * 0.75) {
+        // level with the house: one straight run
+        links.push({ from: { x: leftX + gridW, y: mid }, to: onHouse(mid - houseY),
+                     straight: true, flow: { type: "grid" } });
+      } else {
+        links.push({
+          from: { x: leftX + gridW, y: mid }, to: storageFirst ? onHouse(port) : housePort(house, "w", port),
+          viaX: storageFirst ? laneBase + nB * 14 : centerX - houseR - 18 - nB * 16,
+          flow: { type: "grid" }, fixed: storageFirst,
+        });
+      }
+      return y + gridH;
+    };
+    const placeStorage = (stY, above) => {
       nodes.push({ t: "storage", x: leftX, y: stY, w: leftW, h: stH, batH });
-      leftBottom = stY + stH;
       d.batteries.forEach((b, i) => {
         links.push({
           from: { x: leftX + leftW, y: stY + 42 + i * (batH + 10) + batH / 2 },
-          to: housePort(house, "w", 20 + i * 16),
-          // stagger the vertical runs so parallel battery lines never overlap
-          viaX: centerX - houseR - 18 - i * 16,
-          flow: { type: "battery", index: i },
+          // From the top the first battery takes the highest port and the
+          // outermost lane, the next ones nest inside it, so no lines cross.
+          to: above ? onHouse(-Math.round(houseR * 0.3) - (nB - 1 - i) * 16) : housePort(house, "w", 20 + i * 16),
+          viaX: above ? laneBase + (nB - 1 - i) * 14 : centerX - houseR - 18 - i * 16,
+          flow: { type: "battery", index: i }, fixed: above,
         });
       });
+      return stY + stH;
+    };
+    if (storageFirst) {
+      leftBottom = placeStorage(sideTop, true);
+      // the grid line enters a little below the centre, clear of the batteries
+      if (d.grid.entity) leftBottom = placeGrid(Math.max(leftBottom + 20, houseY + 14 - gridH / 2), 18);
+    } else {
+      if (d.grid.entity) leftBottom = placeGrid(gridY, -18);
+      if (nB) leftBottom = placeStorage(leftBottom + 20, false);
     }
 
     // ---- right-hand side: climate group + consumer column ------------------
     // Everything on the right is fed from one vertical trunk, mirroring the bus
     // bar used underneath, so the wiring stays readable as items are added.
     const vis = d.consumers;
-    // layout.consumers: "auto" fills the right column first, "bottom" keeps
-    // every consumer in the rows below, "group" frames them like the storage.
-    const where = P.consumers || "auto";
     const capRight = where === "bottom" ? 0 : where === "group" ? P.rightMax * 2 : P.rightMax;
     const nRight = clamp(split?.right ?? Math.min(capRight, vis.length), 0, vis.length);
     const groupW = leftW, groupX = vbw - pad - groupW;
@@ -873,7 +905,7 @@
     // Wider than the column when the PV band leaves room, so the car stays legible.
     if (d.vehicles.length) {
       const room = vbw - pad - (pvNode ? pvNode.x + pvNode.w : leftX + leftW) - lane - 14;
-      const evW = Math.round(clamp(room, climW, 280));
+      const evW = sym ? climW : Math.round(clamp(room, climW, 280));
       const evX = vbw - pad - evW;
       const vehH = vehicleArtH(d.vehicles, evW - 34) + 104 + vehicleExtraH(d.vehicles, evW - 18);
       const evH = 42 + d.vehicles.length * (vehH + 10) - 10 + 12;
@@ -934,21 +966,24 @@
       const rows = Math.ceil(rest / cols);
       const top = Math.max(leftBottom, rightBottom, houseY + houseR) + lane + 26;
       const busY = top - 24;
+      // A short single row has room to spare, so its tiles grow (up to 35 %).
+      const grow = rows === 1 ? clamp((vbw - 2 * pad - 280) / (cols * (tileW + gap)), 1, 1.35) : 1;
+      const tw = Math.round(tileW * grow), th = Math.round(tileH * grow), tg = Math.round(gap * grow);
       for (let r = 0; r < rows; r++) {
         const n = Math.min(cols, rest - r * cols);
-        const rowW = n * tileW + (n - 1) * gap;
+        const rowW = n * tw + (n - 1) * tg;
         const x0 = Math.round((vbw - rowW) / 2);
-        const y = top + r * (tileH + gap + 26);
+        const y = top + r * (th + tg + 26);
         const bY = r === 0 ? busY : y - 24;
         const row = { y: bY, targets: [] };
         for (let c = 0; c < n; c++) {
           const idx = nRight + r * cols + c;
-          const x = x0 + c * (tileW + gap);
-          nodes.push({ t: "load", i: idx, x, y, w: tileW, h: tileH });
-          row.targets.push({ x: x + tileW / 2, y, left: x, width: tileW, ref: ["consumers", idx] });
+          const x = x0 + c * (tw + tg);
+          nodes.push({ t: "load", i: idx, x, y, w: tw, h: th, k: grow });
+          row.targets.push({ x: x + tw / 2, y, left: x, width: tw, ref: ["consumers", idx] });
         }
         distribution.rows.push(row);
-        vbh = y + tileH + pad;
+        vbh = y + th + pad;
       }
     }
     return { vbw, vbh: Math.round(vbh), nodes, links, centerX, houseY, distribution };
@@ -979,11 +1014,14 @@
             rightMax: sc < 1 ? P.rightMax + 2 : P.rightMax,
           });
           const maxCols = Math.max(1, Math.floor((Q.vbw - 2 * Q.pad + Q.gap) / (Q.tileW + Q.gap)));
-          const maxRight = Math.min(P.consumers === "bottom" ? 0
-            : P.consumers === "group" ? Q.rightMax * 2 : Q.rightMax, nC);
+          const maxRight = Math.min(P.consumers === "group" ? Q.rightMax * 2
+            : P.consumers === "auto" ? Q.rightMax : 0, nC);
           for (let right = maxRight; right >= 0; right--) {
             const rest = nC - right;
-            const colOptions = rest > 0
+            // With the consumers underneath, a few of them stay on one row
+            // (where they grow) rather than being stacked to save width.
+            const colOptions = rest > 0 && P.consumers !== "auto" && rest <= maxCols ? [rest]
+              : rest > 0
               ? Array.from(new Set([maxCols, Math.min(rest, maxCols), Math.ceil(rest / 2),
                                     Math.ceil(rest / 3), Math.ceil(rest / 4)]))
                   .filter((c) => c >= 1 && c <= maxCols)
@@ -1247,6 +1285,13 @@
                     - (Math.abs(a.k.to.x - a.k.from.x) + Math.abs(a.k.to.y - a.k.from.y)));
 
     order.forEach(({ k }) => {
+      if (k.fixed) {
+        // hand-placed lanes that are known to be clear (left column feeds)
+        const pts = simplify([k.from, { x: k.viaX, y: k.from.y }, { x: k.viaX, y: k.to.y }, k.to]);
+        k.d = toPath(pts, Math.max(9, cell));
+        placed.push(pts);
+        return;
+      }
       if (k.straight) {
         k.d = `M ${k.from.x} ${k.from.y} L ${k.to.x} ${k.to.y}`;
         placed.push([k.from, k.to]);
@@ -1794,8 +1839,10 @@ function step1Grid(n,d,config) {
     : d.gridDisplayValue > 0 ? T("Netzbezug")
     : d.gridDisplayValue < 0 ? T("Einspeisung") : config.name || T("Netz");
   const image=step1Image(config,LIGHT) || "builtin:grid";
-  const left=n.x+(compact?61:111), room=n.x+n.w-left-12;
-  const imgW=compact?45:86, imgH=compact?60:102;
+  // a wider box spends its extra room on a larger pylon
+  const art=compact?1:clamp(n.w/252,1,1.25);
+  const left=n.x+Math.round((compact?61:111)*art), room=n.x+n.w-left-12;
+  const imgW=Math.round((compact?45:86)*art), imgH=Math.round((compact?60:102)*art);
   const body=`<g class="clickable step1-grid" data-entity="${esc(config.entity)}">
     <rect class="glass" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="16"/>
     ${artwork(n.x+12,n.y+9,imgH,image,config.icon||"mdi:transmission-tower", "#7fd4ff",undefined,imgW)}
@@ -1821,7 +1868,8 @@ function step1Battery(x,y,w,h,b,compact) {
   const state=b.powerValue==null?"":T(b.charging?"lädt":b.active?"entlädt":"hält");
   const power=`${fmtW(b.powerValue)}${state?" · "+state:""}`;
   const image=step1Image(b,LIGHT) || "builtin:battery";
-  const artW=compact?31:57, artH=compact?44:59;
+  const art=compact?1:clamp(w/234,1,1.2);
+  const artW=Math.round((compact?31:57)*art), artH=Math.min(h-10,Math.round((compact?44:59)*art));
   const artX=x+w-artW-10, textX=x+(compact?29:36);
   const room=artX-textX-7;
   const soc=b.socValue==null?"–":Math.round(level)+" %";
@@ -2419,7 +2467,7 @@ function step1Battery(x,y,w,h,b,compact) {
           if (!l) return "";
           return tileSvg(n, { label: l.name || l.entity, value: l.text, sub: l.secondaryText,
             image: l.image, icon: l.icon, color: l.color || "#7fd4ff",
-            glow: (l.color || "#37c8ff") + "88", iconSize: 26, entity: l.entity, scale: P.scale });
+            glow: (l.color || "#37c8ff") + "88", iconSize: 26, entity: l.entity, scale: (P.scale || 1) * (n.k || 1) });
         }
         case "stacktile": {
           const t = d.stackTiles[n.i];
@@ -2529,7 +2577,9 @@ function step1Battery(x,y,w,h,b,compact) {
       let s = `<g class="pulse"><rect class="group-frame" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="18"/>
         ${icon(n.x + 12, n.y + 9, 20, "mdi:snowflake-thermometer", "#60a5fa", "rgba(96,165,250,.7)")}
         <text class="group-title" x="${n.x + 39}" y="${n.y + 25}">${T("KLIMA")}</text>`;
-      const cx = n.x + 9, cw = n.w - 18, room = cw - 50;
+      // wider boxes get a larger unit icon and push the text over to match
+      const ico = Math.round(clamp(n.w / 7, 28, 40)), tx = ico + 16;
+      const cx = n.x + 9, cw = n.w - 18, room = cw - tx - 8;
       const fN = fz(13, 1.25), fS = fz(12, 1.25), fM = fz(11, 1.2);
       d.climate.forEach((c, i) => {
         const name = c.name || "";
@@ -2537,12 +2587,12 @@ function step1Battery(x,y,w,h,b,compact) {
         const ent = c.entity || c.state_entity;
         s += `<g class="${ent ? "clickable" : ""}"${ent ? ` data-entity="${esc(ent)}"` : ""}>
           <rect class="group-cell" x="${cx}" y="${y}" width="${cw}" height="${n.cellH}" rx="11"/>
-          ${artwork(cx + 8, y + 10, 28, c.image, c.icon || "mdi:air-conditioner", "#7dd3fc", "rgba(56,189,248,.55)")}
-          <text class="cell-name" x="${cx + 42}" y="${y + 4 + fN}" style="font-size:${step1Fit(name, room, fN, 700)}px">${esc(name)}</text>
-          <text class="cell-state" x="${cx + 42}" y="${y + 8 + fN + fS}" style="font-size:${fS}px">${esc(c.value == null ? (c.stateText || "–") : fmtW(c.value))}</text>`;
+          ${artwork(cx + 8, y + 10, ico, c.image, c.icon || "mdi:air-conditioner", "#7dd3fc", "rgba(56,189,248,.55)")}
+          <text class="cell-name" x="${cx + tx}" y="${y + 4 + fN}" style="font-size:${step1Fit(name, room, fN, 700)}px">${esc(name)}</text>
+          <text class="cell-state" x="${cx + tx}" y="${y + 8 + fN + fS}" style="font-size:${fS}px">${esc(c.value == null ? (c.stateText || "–") : fmtW(c.value))}</text>`;
         c.metricValues.slice(0, 2).forEach((m, j) => {
           const t = `${m.label || ""} ${fmtBy(m.unit || "kWh", m.value)}`;
-          s += `<text class="cell-metric" x="${cx + 42}" y="${y + n.cellH - 7 - (Math.min(2, c.metricValues.length) - 1 - j) * (fM + 3)}"
+          s += `<text class="cell-metric" x="${cx + tx}" y="${y + n.cellH - 7 - (Math.min(2, c.metricValues.length) - 1 - j) * (fM + 3)}"
             style="font-size:${step1Fit(t, room, fM, 600)}px">${esc(t)}</text>`;
         });
         s += `</g>`;
@@ -2844,8 +2894,13 @@ function step1Battery(x,y,w,h,b,compact) {
         ] } } },
         { name: "bottom_gap", label: "Abstand nach unten (px)", selector: SEL.num(0, 200, 2) },
         { name: "climate", label: "Klima-Position", selector: { select: { mode: "dropdown", options: [
-          { value: "left", label: "Links über dem Netz (Standard)" },
-          { value: "right", label: "Rechts über den Verbrauchern" },
+          { value: "right", label: "Rechts unter dem E-Auto (Standard)" },
+          { value: "left", label: "Links über dem Netz" },
+        ] } } },
+        { name: "consumers", label: "Verbraucher-Anordnung", selector: { select: { mode: "dropdown", options: [
+          { value: "bottom", label: "Unten in Reihen (Standard)" },
+          { value: "group", label: "Rechts als Gruppe" },
+          { value: "auto", label: "Rechte Spalte zuerst, Rest unten" },
         ] } } },
         { name: "text_scale", label: "Schriftgröße (%)", selector: SEL.num(70, 160, 5) },
       ] },
@@ -3489,7 +3544,7 @@ function step1Battery(x,y,w,h,b,compact) {
       const c = this._config;
       return { title: c.title, mode: c.layout.mode, wide_min: c.layout.wide_min, mid_min: c.layout.mid_min,
                fit_height: c.layout.fit_height, bottom_gap: c.layout.bottom_gap, keep_awake: c.keep_awake || "off",
-               climate: c.layout.climate || "left",
+               climate: c.layout.climate || "right", consumers: c.layout.consumers || "bottom",
                text_scale: Math.round((Number(c.layout.text_scale) || 1) * 100) };
     }
 
@@ -3500,7 +3555,8 @@ function step1Battery(x,y,w,h,b,compact) {
           n.title = v.title;
           n.layout = { ...n.layout, mode: v.mode || "auto", wide_min: v.wide_min, mid_min: v.mid_min,
                        fit_height: v.fit_height, bottom_gap: v.bottom_gap };
-          if (v.climate === "right") n.layout.climate = "right"; else delete n.layout.climate;
+          if (v.climate === "left") n.layout.climate = "left"; else delete n.layout.climate;
+          if (v.consumers && v.consumers !== "bottom") n.layout.consumers = v.consumers; else delete n.layout.consumers;
           const ts = Number(v.text_scale);
           if (ts && ts !== 100) n.layout.text_scale = ts / 100; else delete n.layout.text_scale;
           if (v.keep_awake && v.keep_awake !== "off") n.keep_awake = v.keep_awake; else delete n.keep_awake;
@@ -3651,7 +3707,7 @@ function step1Battery(x,y,w,h,b,compact) {
       const hint = document.createElement("div");
       hint.className = "hint";
       hint.textContent = page.id === "consumers"
-        ? T("Reihenfolge bestimmt die Platzierung: die ersten füllen die rechte Spalte, der Rest die Reihen darunter.")
+        ? T("Mit den Pfeilen legst du die Reihenfolge der Kacheln fest.")
         : T("Mit den Pfeilen sortieren, mit dem Stift bearbeiten.");
       root.appendChild(hint);
       if (page.id === "consumers") {

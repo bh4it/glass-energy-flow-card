@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Card harness</title>
+<style>
+  html, body { margin: 0; background: #111; }
+  #host { box-sizing: border-box; }
+  ha-card { display: block; }
+</style>
+<script>
+  // Stand-in for Home Assistant's <ha-icon>: the card reads the path out of
+  // ha-icon > ha-svg-icon > path, so mimic exactly that shape.
+  customElements.define("ha-svg-icon", class extends HTMLElement {
+    connectedCallback() {
+      if (this.shadowRoot) return;
+      this.attachShadow({ mode: "open" }).innerHTML =
+        '<svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/></svg>';
+    }
+  });
+  customElements.define("ha-icon", class extends HTMLElement {
+    connectedCallback() {
+      if (this.shadowRoot) return;
+      this.attachShadow({ mode: "open" }).appendChild(document.createElement("ha-svg-icon"));
+    }
+  });
+</script>
+<script type="module" src="/dist/glass-energy-flow-card.js"></script>
+</head>
+<body><div id="host"></div></body>
+</html>

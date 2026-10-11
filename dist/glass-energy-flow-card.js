@@ -3124,7 +3124,7 @@ function step1Battery(x,y,w,h,b,compact) {
     batteries: { choices: ["battery", "battery-stack"], fallback: "builtin:battery" },
     grid: { choices: ["grid"], fallback: "builtin:grid" },
     home: { choices: ["home"], fallback: "builtin:home" },
-    consumers: { choices: ["washer", "dryer", "dishwasher", "pump", "freezer"] },
+    consumers: { choices: ["washer", "dryer", "dishwasher", "freezer", "fridge", "oven", "airfryer", "coffee", "pump"] },
     climate: {},
     vehicles: { fallback: "builtin:ev" },
   };

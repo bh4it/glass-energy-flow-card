@@ -163,7 +163,7 @@ In YAML: `image: builtin:<name>`, `image: none` (icon only) or an image URL.
 | `grid` | grid (default) |
 | `battery`, `battery-stack` | storage (default: `battery`) |
 | `solar-roof`, `solar-balcony`, `solar-garage`, `solar-ground` | PV arrays (default: `solar-roof`) |
-| `washer`, `dryer`, `dishwasher`, `pump`, `freezer` | consumers |
+| `washer`, `dryer`, `dishwasher`, `freezer`, `fridge`, `oven`, `airfryer`, `coffee`, `pump` | consumers |
 | `ev-plugged`, `ev` | electric car (default: switches with the plug state) |
 
 ### 4. Electric car *(optional)*

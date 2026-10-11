@@ -164,7 +164,7 @@ Im YAML: `image: builtin:<name>`, `image: none` (nur Symbol) oder eine Bild-URL.
 | `grid` | Netz (Standard) |
 | `battery`, `battery-stack` | Speicher (Standard: `battery`) |
 | `solar-roof`, `solar-balcony`, `solar-garage`, `solar-ground` | PV-Anlagen (Standard: `solar-roof`) |
-| `washer`, `dryer`, `dishwasher`, `pump`, `freezer` | Verbraucher |
+| `washer`, `dryer`, `dishwasher`, `freezer`, `fridge`, `oven`, `airfryer`, `coffee`, `pump` | Verbraucher |
 | `ev-plugged`, `ev` | E-Auto (Standard: wechselt mit dem Steckerstatus) |
 
 ### 4. E-Auto *(optional)*

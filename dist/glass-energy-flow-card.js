@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.4.0";
+  const CARD_VERSION = "1.5.0";
 
   // ------------------------------------------------------------------ i18n
   // The UI follows Home Assistant's language: German for "de", English
@@ -1740,9 +1740,9 @@
     const cx = n.x + n.w / 2;
     const k = o.scale == null ? 1 : o.scale;             // tile scale factor
     const size = Math.round((o.iconSize || 28) * k);
-    const fLabel = fz(Math.max(9, Math.round(13 * k)), 1.3);
-    const fVal = fz(Math.max(11, Math.round(17 * k)));
-    const fSub = fz(Math.max(8, Math.round(12 * k)), 1.3);
+    const fLabel = fz(Math.max(9, Math.round(14 * k)), 1.3);
+    const fVal = fz(Math.max(11, Math.round(20 * k)));
+    const fSub = fz(Math.max(8, Math.round(13 * k)), 1.3);
     const padTop = Math.round(8 * k);
     const inner = n.w - 12;
     const subY = n.y + n.h - Math.round(8 * k);
@@ -1851,12 +1851,12 @@ function step1Grid(n,d,config) {
     <text class="step1-grid-value" x="${left}" y="${n.y+Math.round(labelSize*(compact?1.9:1.85)+size*(compact?1.3:1.25))}"
       style="font-size:${step1Fit(value,room,size,700)}px;font-weight:700">${esc(value)}</text>
     ${!compact?`<path d="M ${n.x+16} ${n.y+113} H ${n.x+n.w-16}" stroke="var(--sc-tile-line)" stroke-width="1"/>`:""}
-    ${config.import_today?`<text class="step1-grid-daily" x="${n.x+14}" y="${n.y+(compact?90:134)}" style="font-size:${(compact?9:fz(12,1.2))}px;fill:var(--sc-ink-soft)">${T("Bezug heute")}</text>
+    ${config.import_today?`<text class="step1-grid-daily" x="${n.x+14}" y="${n.y+(compact?90:134)}" style="font-size:${(compact?9:fz(14,1.2))}px;fill:var(--sc-ink-soft)">${T("Bezug heute")}</text>
       <text x="${n.x+n.w-14}" y="${n.y+(compact?90:134)}" text-anchor="end"
-       style="font-size:${(compact?10:fz(13,1.2))}px">${esc(fmtKWh(d.gridImportToday))}</text>`:""}
-    ${config.export_today?`<text class="step1-grid-daily" x="${n.x+14}" y="${n.y+(compact?109:155)}" style="font-size:${(compact?9:fz(12,1.2))}px;fill:var(--sc-ink-soft)">${T("Einspeisung")}</text>
+       style="font-size:${(compact?10:fz(15,1.2))}px">${esc(fmtKWh(d.gridImportToday))}</text>`:""}
+    ${config.export_today?`<text class="step1-grid-daily" x="${n.x+14}" y="${n.y+(compact?109:155)}" style="font-size:${(compact?9:fz(14,1.2))}px;fill:var(--sc-ink-soft)">${T("Einspeisung")}</text>
       <text x="${n.x+n.w-14}" y="${n.y+(compact?109:155)}" text-anchor="end"
-       style="font-size:${(compact?10:fz(13,1.2))}px">${esc(fmtKWh(d.gridExportToday))}</text>`:""}
+       style="font-size:${(compact?10:fz(15,1.2))}px">${esc(fmtKWh(d.gridExportToday))}</text>`:""}
   </g>`;
   return body;
 }
@@ -1876,9 +1876,9 @@ function step1Battery(x,y,w,h,b,compact) {
   // charge level in green while charging, red while discharging, neutral at rest
   // The three lines share the box height; larger text is only taken as far
   // as it still fits between the top edge and the power line at the bottom.
-  const fit=Math.min(1,(h-20)/(fz(compact?17:23,1.25)*0.95+fz(compact?11:14,1.25)*2.1+6));
-  const fSoc=Math.max(compact?17:23,fz(compact?17:23,1.25)*fit);
-  const fName=Math.max(compact?11:14,fz(compact?11:14,1.25)*fit), fPow=fName;
+  const fit=Math.min(1,(h-20)/(fz(compact?17:26,1.25)*0.95+fz(compact?11:15,1.25)*2.1+6));
+  const fSoc=Math.max(compact?17:23,fz(compact?17:26,1.25)*fit);
+  const fName=Math.max(compact?11:14,fz(compact?11:15,1.25)*fit), fPow=fName;
   const socY=y+Math.round(5+fSoc*0.95), nameY=Math.min(socY+Math.round(fName*1.25), y+h-12-fPow);
   const socFill=b.charging?inkify("#22e6a4",LIGHT):b.active?inkify("#ff5d6c",LIGHT):"currentColor";
   const barW=compact?8:11,barH=compact?36:45,barX=x+12,barY=y+10;
@@ -1938,7 +1938,7 @@ function step1Battery(x,y,w,h,b,compact) {
       : v.image ? v.image
       : v.plugged ? "builtin:ev-plugged" : "builtin:ev";
     const tv = Math.min(TB, 1.25);
-    const big = fz(compact ? 30 : 28, 1.25), kpi = fz(compact ? 20 : 18, 1.25), mid = fz(13, 1.25), small = fz(12, 1.2);
+    const big = fz(compact ? 30 : 28, 1.25), kpi = fz(compact ? 20 : 18, 1.25), mid = fz(15, 1.25), small = fz(13, 1.2);
     const metrics = v.metricValues || [];
     const mRows = vehicleMetricRows(v, w);
     // The text block grows with tv, so the icon row below it starts where
@@ -1987,7 +1987,7 @@ function step1Battery(x,y,w,h,b,compact) {
       <text class="ev-soc" x="${lx}" y="${textTop + Math.round(24 * tv)}"
         style="font-size:${step1Fit(soc, tight ? w - 24 : half, big, 700)}px;font-weight:700">${esc(soc)}</text>
       <text x="${rx}" y="${textTop + Math.round(24 * tv)}" text-anchor="end"
-        style="font-size:${step1Fit(right1, half + 6, v.charging ? kpi : fz(14, 1.25), 700)}px;font-weight:700;fill:${v.charging ? green : "currentColor"}">${esc(right1)}</text>
+        style="font-size:${step1Fit(right1, half + 6, v.charging ? kpi : fz(16, 1.25), 700)}px;font-weight:700;fill:${v.charging ? green : "currentColor"}">${esc(right1)}</text>
       <text x="${lx}" y="${textTop + Math.round(44 * tv)}"
         style="font-size:${step1Fit(v.name || "", tight ? w - 24 : half, mid, 600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(v.name || "")}</text>
       ${right2 ? `<text x="${rx}" y="${textTop + Math.round(44 * tv)}" text-anchor="end"
@@ -2513,7 +2513,7 @@ function step1Battery(x,y,w,h,b,compact) {
     const fx = n.x + 14, fy = n.y + (n.compact ? 34 : 38) + (n.summaryStacked ? 22 : 0);
     const fw = n.w - 28, columnW = fw / d.pvForecast.length;
     const values = d.pvForecast.map(f => fmtPvEnergy(f.value));
-    const valueSize = Math.min(...values.map(value => step1Fit(value, columnW - 16, 16, 650)));
+    const valueSize = Math.min(...values.map(value => step1Fit(value, columnW - 16, 18, 650)));
     svg += `<g class="pv-forecast">
       <rect x="${fx}" y="${fy}" width="${fw}" height="70" rx="10"
         style="fill:var(--sc-chip-bg);stroke:var(--sc-chip-line)"/>
@@ -2579,23 +2579,39 @@ function step1Battery(x,y,w,h,b,compact) {
       let s = `<g class="pulse"><rect class="group-frame" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="18"/>
         ${icon(n.x + 12, n.y + 9, 20, "mdi:snowflake-thermometer", "#60a5fa", "rgba(96,165,250,.7)")}
         <text class="group-title" x="${n.x + 39}" y="${n.y + 25}">${T("KLIMA")}</text>`;
-      // wider boxes get a larger unit icon and push the text over to match
-      const ico = Math.round(clamp(n.w / 7, 28, 40)), tx = ico + 16;
-      const cx = n.x + 9, cw = n.w - 18, room = cw - tx - 8;
-      const fN = fz(13, 1.25), fS = fz(12, 1.25), fM = fz(11, 1.2);
+      // Each unit: icon, then name and a large power figure on the left, the
+      // energy figures as label + value pairs on the right, so the numbers
+      // stay readable on a wall display.
+      const ico = Math.round(clamp(n.w / 6.5, 28, 44)), tx = ico + 18;
+      const cx = n.x + 9, cw = n.w - 18;
+      const fN = fz(15, 1.25), fP = fz(24, 1.3), fL = fz(12, 1.2), fV = fz(16, 1.25);
       d.climate.forEach((c, i) => {
         const name = c.name || "";
         const y = n.y + 42 + i * (n.cellH + 10);
         const ent = c.entity || c.state_entity;
+        const metrics = c.metricValues.slice(0, 2);
+        // the right column is only as wide as its widest figure needs
+        const rightW = metrics.length ? Math.round(Math.min((cw - tx) * 0.42, Math.max(...metrics.map((m) =>
+          Math.max(measureText(m.label || "", fL, 600), measureText(fmtBy(m.unit || "kWh", m.value), fV, 700)))))) : 0;
+        const leftRoom = cw - tx - rightW - 16;
+        const power = c.value == null ? (c.stateText || "–") : fmtW(c.value);
+        const nameY = y + Math.round(n.cellH / 2 - 4);
         s += `<g class="${ent ? "clickable" : ""}"${ent ? ` data-entity="${esc(ent)}"` : ""}>
           <rect class="group-cell" x="${cx}" y="${y}" width="${cw}" height="${n.cellH}" rx="11"/>
-          ${artwork(cx + 8, y + 10, ico, c.image, c.icon || "mdi:air-conditioner", "#7dd3fc", "rgba(56,189,248,.55)")}
-          <text class="cell-name" x="${cx + tx}" y="${y + 4 + fN}" style="font-size:${step1Fit(name, room, fN, 700)}px">${esc(name)}</text>
-          <text class="cell-state" x="${cx + tx}" y="${y + 8 + fN + fS}" style="font-size:${fS}px">${esc(c.value == null ? (c.stateText || "–") : fmtW(c.value))}</text>`;
-        c.metricValues.slice(0, 2).forEach((m, j) => {
-          const t = `${m.label || ""} ${fmtBy(m.unit || "kWh", m.value)}`;
-          s += `<text class="cell-metric" x="${cx + tx}" y="${y + n.cellH - 7 - (Math.min(2, c.metricValues.length) - 1 - j) * (fM + 3)}"
-            style="font-size:${step1Fit(t, room, fM, 600)}px">${esc(t)}</text>`;
+          ${artwork(cx + 8, y + Math.round((n.cellH - ico) / 2), ico, c.image, c.icon || "mdi:air-conditioner", "#7dd3fc", "rgba(56,189,248,.55)")}
+          <text class="cell-name" x="${cx + tx}" y="${nameY}" style="font-size:${step1Fit(name, leftRoom, fN, 700)}px">${esc(name)}</text>
+          <text class="cell-power" x="${cx + tx}" y="${nameY + Math.round(fP * 1.1)}"
+            style="font-size:${step1Fit(power, leftRoom, fP, 700)}px;font-weight:700;fill:${c.active ? "var(--sc-ink)" : "var(--sc-ink-soft)"}">${esc(power)}</text>`;
+        const pairH = fL + fV + 6, gap = 6;
+        const top = y + Math.round((n.cellH - (metrics.length * pairH + (metrics.length - 1) * gap)) / 2);
+        const rx = cx + cw - 10;
+        metrics.forEach((m, j) => {
+          const label = m.label || "", value = fmtBy(m.unit || "kWh", m.value);
+          const py = top + j * (pairH + gap);
+          s += `<text class="cell-metric" x="${rx}" y="${py + fL}" text-anchor="end"
+              style="font-size:${step1Fit(label, rightW, fL, 600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(label)}</text>
+            <text class="cell-metric-value" x="${rx}" y="${py + fL + 4 + fV}" text-anchor="end"
+              style="font-size:${step1Fit(value, rightW, fV, 700)}px;font-weight:700;fill:var(--sc-ink)">${esc(value)}</text>`;
         });
         s += `</g>`;
       });

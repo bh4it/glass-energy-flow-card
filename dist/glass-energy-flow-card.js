@@ -1941,6 +1941,8 @@ function step1Battery(x,y,w,h,b,compact) {
     const big = fz(compact ? 30 : 28, 1.25), kpi = fz(compact ? 20 : 18, 1.25), mid = fz(13, 1.25), small = fz(12, 1.2);
     const metrics = v.metricValues || [];
     const mRows = vehicleMetricRows(v, w);
+    // The text block grows with tv, so the icon row below it starts where
+    // the text ends instead of at a fixed offset.
     const textTop = y + h - 20 - mRows * 40 - Math.round(62 * tv);
     const artX = x + 8, artY = y + 8, artW = w - 16, artH = textTop - artY - 6;
     const soc = v.socValue == null ? "–" : Math.round(level) + " %";
@@ -1963,7 +1965,7 @@ function step1Battery(x,y,w,h,b,compact) {
     const line3 = tight ? [v.charging ? fmtW(v.powerValue) : range, status].filter(Boolean).join(" · ") : range;
     let row = "";
     if (metrics.length) {
-      const cols = Math.ceil(metrics.length / mRows), cw = (w - 16) / cols, mTop = textTop + 66;
+      const cols = Math.ceil(metrics.length / mRows), cw = (w - 16) / cols, mTop = textTop + Math.round(62 * tv) + 4;
       row = metrics.map((m, j) => {
         const cx = x + 8 + cw * ((j % cols) + 0.5), iy = mTop + Math.floor(j / cols) * 40;
         return `<g class="clickable" data-entity="${esc(m.entity)}">

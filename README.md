@@ -16,7 +16,7 @@ electric car and glowing power flows that show direction and power.
 - **PV total** with any number of arrays (power + yield today) and a **PV forecast**
   (today / remaining / tomorrow)
 - **Storage** – several batteries with state of charge (green while charging, red while
-  discharging) and charge/discharge power
+  discharging), charge/discharge power and optional day values (e.g. charged/discharged today)
 - **Grid** with import/export today, **house** with total consumption
 - **Electric car** – charge level and charging power at a glance, plug state, range, time to
   full and up to six extra values; drawn artwork or your own photo
@@ -237,6 +237,13 @@ batteries:
   - name: Battery
     soc: sensor.battery_soc
     power: sensor.battery_power
+    metrics:                      # optional, up to 2
+      - label: Charged today
+        entity: sensor.battery_charged_today
+        unit: kWh
+      - label: Discharged today
+        entity: sensor.battery_discharged_today
+        unit: kWh
 grid:
   entity: sensor.grid_power
   import_today: sensor.grid_import_today
@@ -282,7 +289,7 @@ grid_options:
 | `header` | `real_import`, `real_export` (kWh), `temp`, `humidity`, `weather`, `uv` |
 | `pv` | `energy_today`, `forecast_today`, `forecast_remaining`, `forecast_tomorrow` |
 | `solar[]` | `name`, `entity` (W), `energy_today`, `icon`, `image`, `image_light` |
-| `batteries[]` | `name`, `soc` (%), `power` (W), `invert`, `icon`, `image`, `image_light` |
+| `batteries[]` | `name`, `soc` (%), `power` (W), `invert`, `icon`, `image`, `image_light`, `metrics[]` (`label`, `entity`, `unit`; up to 2, shown as extra lines in the tile, e.g. charged/discharged today) |
 | `grid` | `entity` (W), `invert`, `import_today`, `export_today`, `name`, `icon`, `image`, `image_light` |
 | `home` | `entity` (W), `icon`, `image`, `image_light` |
 | `vehicles[]` | `name`, `soc` (%), `power` (W), `plug`, `range` (km), `time_to_full` (min), `target_soc`, `threshold` (W, default 50), `invert`, `icon`, `image`, `image_plugged`, `image_fit` (`cover`/`contain`), `metrics[]` (`entity`, `icon`, `unit`; up to 6) |

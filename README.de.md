@@ -16,7 +16,7 @@ Verbraucher und ein E-Auto – mit leuchtenden Stromflüssen, die Richtung und L
 - **PV-Total** mit beliebig vielen Anlagen (Leistung + Ertrag heute) und **PV-Prognose**
   (Heute / Rest / Morgen)
 - **Speicher** – mehrere Batterien mit Ladestand (grün beim Laden, rot beim Entladen) und
-  Lade-/Entladeleistung
+  Lade-/Entladeleistung, optional mit Tageswerten (z. B. Aufladung/Entladung heute)
 - **Netz** mit Bezug/Einspeisung heute, **Haus** mit Gesamtverbrauch
 - **E-Auto** – Ladestand und Ladeleistung auf einen Blick, Steckerstatus, Reichweite, Restzeit
   und bis zu sechs Zusatzwerte; gezeichnete Grafik oder eigenes Foto
@@ -239,6 +239,13 @@ batteries:
   - name: Speicher
     soc: sensor.speicher_ladestand
     power: sensor.speicher_leistung
+    metrics:                      # optional, bis zu 2
+      - label: Aufladung heute
+        entity: sensor.speicher_aufladung_heute
+        unit: kWh
+      - label: Entladung heute
+        entity: sensor.speicher_entladung_heute
+        unit: kWh
 grid:
   entity: sensor.netzleistung
   import_today: sensor.netzbezug_heute
@@ -284,7 +291,7 @@ grid_options:
 | `header` | `real_import`, `real_export` (kWh), `temp`, `humidity`, `weather`, `uv` |
 | `pv` | `energy_today`, `forecast_today`, `forecast_remaining`, `forecast_tomorrow` |
 | `solar[]` | `name`, `entity` (W), `energy_today`, `icon`, `image`, `image_light` |
-| `batteries[]` | `name`, `soc` (%), `power` (W), `invert`, `icon`, `image`, `image_light` |
+| `batteries[]` | `name`, `soc` (%), `power` (W), `invert`, `icon`, `image`, `image_light`, `metrics[]` (`label`, `entity`, `unit`; bis zu 2, als Zusatzzeilen in der Kachel, z. B. Aufladung/Entladung heute) |
 | `grid` | `entity` (W), `invert`, `import_today`, `export_today`, `name`, `icon`, `image`, `image_light` |
 | `home` | `entity` (W), `icon`, `image`, `image_light` |
 | `vehicles[]` | `name`, `soc` (%), `power` (W), `plug`, `range` (km), `time_to_full` (min), `target_soc`, `threshold` (W, Standard 50), `invert`, `icon`, `image`, `image_plugged`, `image_fit` (`cover`/`contain`), `metrics[]` (`entity`, `icon`, `unit`; bis zu 6) |

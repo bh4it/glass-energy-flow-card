@@ -846,7 +846,7 @@
       gridY = Math.max(gridY, climY + climH + 16);
       leftBottom = climY + climH;
     }
-    const nB = d.batteries.length, batH = P.batH;
+    const nB = d.batteries.length, batH = P.batH + batteryMetricH(d, false);
     const stH = 42 + nB * (batH + 10) - 10 + 12;
     // Storage on top (level with the vehicle) and the grid below it, unless
     // the climate group has taken the top of the column.
@@ -1085,7 +1085,7 @@
     }
 
     const sideW = Math.floor((vbw - 2 * pad - 2 * houseR - 76) / 2);
-    const gridH = 122, batH = P.batH;
+    const gridH = 122, batH = P.batH + batteryMetricH(d, true);
     const batsH = d.batteries.length ? d.batteries.length * (batH + 8) - 8 : 0;
     const sideH = Math.max(d.grid.entity ? gridH : 0, batsH, houseR * 2);
     const rowTop = pvBottom + (nS ? lane + 18 : 10);
@@ -1861,7 +1861,19 @@ function step1Grid(n,d,config) {
   return body;
 }
 
+// Optional day values (e.g. charged / discharged today) sit as extra lines at
+// the bottom of a battery tile; every tile in a layout gets the same height.
+const BAT_METRIC_LINE = { full: 17, compact: 14 };
+function batteryMetricH(d, compact) {
+  const n = Math.max(0, ...d.batteries.map((b) => (b.metricValues || []).length));
+  return n * (compact ? BAT_METRIC_LINE.compact : BAT_METRIC_LINE.full);
+}
+
 function step1Battery(x,y,w,h,b,compact) {
+  const metrics=(b.metricValues||[]).slice(0,2);
+  const lineH=compact?BAT_METRIC_LINE.compact:BAT_METRIC_LINE.full, fM=compact?10:fz(11,1.2);
+  const boxH=h;
+  h=h-metrics.length*lineH;
   const level=b.socValue==null?0:clamp(b.socValue,0,100);
   const accent=level<=15?"#ff5d6c":level>=95?"#22e6a4":"#37c8ff";
   const label=b.name||"";
@@ -1883,7 +1895,7 @@ function step1Battery(x,y,w,h,b,compact) {
   const socFill=b.charging?inkify("#22e6a4",LIGHT):b.active?inkify("#ff5d6c",LIGHT):"currentColor";
   const barW=compact?8:11,barH=compact?36:45,barX=x+12,barY=y+10;
   return `<g class="step1-battery clickable" data-entity="${esc(b.soc||b.power)}">
-    <rect class="glass" x="${x}" y="${y}" width="${w}" height="${h}" rx="14"/>
+    <rect class="glass" x="${x}" y="${y}" width="${w}" height="${boxH}" rx="14"/>
     <rect class="socbar-bg" x="${barX}" y="${barY}" width="${barW}" height="${barH}" rx="4"/>
     <rect x="${barX}" y="${barY+barH*(1-level/100)}" width="${barW}" height="${barH*level/100}" rx="4" fill="${inkify(accent,LIGHT)}"/>
     ${artwork(artX,y+5,artH,image,b.icon||"mdi:battery",accent,undefined,artW)}
@@ -1893,6 +1905,11 @@ function step1Battery(x,y,w,h,b,compact) {
       style="font-size:${step1Fit(label,room,fName,600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(label)}</text>
     <text class="step1-battery-power" x="${textX}" y="${y+h-11}"
       style="font-size:${step1Fit(power,x+w-10-textX,fPow,650)}px;font-weight:650">${esc(power)}</text>
+    ${metrics.map((m,j)=>{
+      const t=`${m.label||""} ${fmtBy(m.unit||"kWh",m.value)}`.trim();
+      return `<text class="step1-battery-metric" x="${textX}" y="${y+h-10+(j+1)*lineH}"
+        style="font-size:${step1Fit(t,x+w-10-textX,fM,600)}px;font-weight:600;fill:var(--sc-ink-soft)">${esc(t)}</text>`;
+    }).join("")}
   </g>`;
 }
 
@@ -2210,7 +2227,9 @@ function step1Battery(x,y,w,h,b,compact) {
         const inv = b.invert ? -1 : 1;
         const pw = p == null ? null : p * inv;
         return { ...b, socValue: num(hass, b.soc), powerValue: pw,
-                 active: pw != null && Math.abs(pw) > 5, charging: pw != null && pw < -5 };
+                 active: pw != null && Math.abs(pw) > 5, charging: pw != null && pw < -5,
+                 metricValues: (b.metrics || []).filter((m) => m && m.entity).slice(0, 2)
+                   .map((m) => ({ ...m, value: num(hass, m.entity) })) };
       });
       const gRaw = num(hass, c.grid.entity);
       const gridValue = gRaw == null ? null : (c.grid.invert ? -gRaw : gRaw);
@@ -2319,7 +2338,7 @@ function step1Battery(x,y,w,h,b,compact) {
       if (room && cardW) target = cardW / room;
 
       // Layout + routing only need to run when the structure or shape changes.
-      const sig = [mode, d.solar.length, d.batteries.length, d.climate.length,
+      const sig = [mode, d.solar.length, d.batteries.map(b => b.metricValues.length).join(","), d.climate.length,
                    d.vehicles.map(v => (v.soc || v.power) + "/" + v.metricValues.length).join(","),
                    d.consumers.map(c => c.entity).join(","),
                    d.climate.map(c => c.entity || c.state_entity).join(","),
@@ -3069,6 +3088,7 @@ function step1Battery(x,y,w,h,b,compact) {
   };
 
   SCHEMA.climateItem = SCHEMA.climateItem.concat([SCHEMA._metric(1), SCHEMA._metric(2)]);
+  SCHEMA.batteryItem = SCHEMA.batteryItem.concat([SCHEMA._metric(1), SCHEMA._metric(2)]);
   SCHEMA._vehicleValue = (n) => ({
     title: "Zusatzwert " + n, name: "metric_" + n, type: "expandable", schema: [
       { type: "grid", column_min_width: "200px", schema: [
@@ -3084,7 +3104,7 @@ function step1Battery(x,y,w,h,b,compact) {
 
   // Metrics are stored as an array but edited as fixed slots
   // (climate: two labelled figures, vehicles: the icon row).
-  const METRIC_SLOTS = { climate: 2, vehicles: VEHICLE_VALUES };
+  const METRIC_SLOTS = { climate: 2, vehicles: VEHICLE_VALUES, batteries: 2 };
   const metricsToForm = (x, n) => {
     const o = { ...x };
     (x.metrics || []).slice(0, n).forEach((m, i) => { o["metric_" + (i + 1)] = { ...m }; });

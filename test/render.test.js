@@ -10,7 +10,7 @@ import { chromium } from "playwright";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const OUT = join(ROOT, "test", "output");
-const TYPES = { ".html": "text/html", ".js": "text/javascript", ".png": "image/png" };
+const TYPES = { ".html": "text/html", ".js": "text/javascript", ".png": "image/png", ".jpg": "image/jpeg" };
 
 // ------------------------------------------------------------- fake hass
 const st = (state, unit, name) => ({
@@ -87,6 +87,9 @@ before(async () => {
   await mkdir(OUT, { recursive: true });
   server = createServer(async (req, res) => {
     const path = normalize(decodeURIComponent(new URL(req.url, "http://x").pathname));
+    // Chromium asks for a favicon on the first page it opens; answering it keeps
+    // that request from showing up as a page error in whichever test runs first.
+    if (path === "/favicon.ico") { res.writeHead(204).end(); return; }
     try {
       const body = await readFile(join(ROOT, path === "/" ? "test/harness.html" : path));
       res.writeHead(200, { "content-type": TYPES[extname(path)] || "text/html" });
@@ -263,3 +266,46 @@ test("climate sits right of the house in the wide layout, unless moved left", as
   assert.equal(await side(CONFIG), "right");
   assert.equal(await side({ ...CONFIG, layout: { climate: "left" } }), "left");
 });
+
+// The app style: photo scene with pinned values, rows and consumer tiles.
+const APP = { ...CONFIG, theme: { style: "app" } };
+const APP_WEATHER = [
+  { name: "app-wide", width: 1440, height: 1000, weather: "partlycloudy", labels: 6 },
+  { name: "app-phone", width: 390, height: 900, weather: "rainy", labels: 5 },
+];
+for (const L of APP_WEATHER) {
+  test(`app style renders at ${L.width}px (${L.weather})`, async () => {
+    const states = { ...STATES, "weather.home": { ...STATES["weather.home"], state: L.weather } };
+    const { page, errors } = await mount({ ...L, config: APP, hass: { ...HASS, states } });
+    try {
+      await page.waitForFunction((t) => {
+        const r = document.querySelector(t)?.shadowRoot;
+        const img = r && r.querySelector(".photo");
+        return img && img.complete && img.naturalWidth > 0 && r.querySelectorAll(".lbl").length;
+      }, card, { timeout: 10_000 });
+      await page.waitForTimeout(300);
+      const info = await page.evaluate((t) => {
+        const r = document.querySelector(t).shadowRoot;
+        const app = r.getElementById("app");
+        return {
+          cls: app.className, labels: r.querySelectorAll(".lbl").length,
+          rows: r.querySelectorAll(".row").length, tiles: [...r.querySelectorAll(".tile .tt")].map((n) => n.firstChild.textContent),
+          cabinets: r.querySelectorAll("#bats polygon").length,
+          text: r.textContent, overflow: app.scrollWidth - app.clientWidth,
+          bad: /NaN|undefined/.test(r.innerHTML),
+        };
+      }, card);
+      await page.screenshot({ path: join(OUT, `${L.name}.png`), fullPage: true });
+      assert.ok(info.labels >= L.labels, `expected ${L.labels}+ scene labels, got ${info.labels}`);
+      assert.ok(info.rows >= 3, `expected rows below the scene, got ${info.rows}`);
+      assert.ok(info.cabinets > 0, "battery cabinets are drawn");
+      assert.match(info.cls, new RegExp(`w-${L.weather === "rainy" ? "rainy" : "partly"}`), "weather mood follows the entity");
+      assert.deepEqual(info.tiles, ["Washer"], "idle consumers stay hidden");
+      assert.ok(info.overflow <= 1, "no horizontal overflow");
+      assert.equal(info.bad, false, "no NaN/undefined leaks");
+      assert.deepEqual(errors, [], "no page errors");
+    } finally {
+      await page.close();
+    }
+  });
+}

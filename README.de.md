@@ -290,7 +290,7 @@ grid_options:
 | `keep_awake` | `off` (Standard), `fire_os` (nur Echo Show / Fire-Tablets), `always` |
 | `header` | `real_import`, `real_export` (kWh), `temp`, `humidity`, `weather`, `uv` |
 | `pv` | `energy_today`, `forecast_today`, `forecast_remaining`, `forecast_tomorrow` |
-| `solar[]` | `name`, `entity` (W), `energy_today`, `icon`, `image`, `image_light` |
+| `solar[]` | `name`, `entity` (W), `energy_today`, `icon`, `image`, `image_light`, `building` (App-Stil: `house`, `garage` oder `shed`; Anlagen werden je Gebäude summiert) |
 | `batteries[]` | `name`, `soc` (%), `power` (W), `invert`, `icon`, `image`, `image_light`, `metrics[]` (`label`, `entity`, `unit`; bis zu 2, als Zusatzzeilen in der Kachel, z. B. Aufladung/Entladung heute) |
 | `grid` | `entity` (W), `invert`, `import_today`, `export_today`, `name`, `icon`, `image`, `image_light` |
 | `home` | `entity` (W), `icon`, `image`, `image_light` |
@@ -299,7 +299,12 @@ grid_options:
 | `consumers_auto_hide` | `true` (Standard): Verbraucher ohne Verbrauch (bis zu ihrem `threshold`, Standard 5 W) werden ausgeblendet und geben ihren Platz frei; sie erscheinen wieder, sobald sie Strom ziehen, und bleiben danach noch eine Minute stehen. `false` zeigt alle Verbraucher |
 | `consumers[]` | `name`, `entity`, `unit`, `icon`, `color`, `image`, `hidden`, `always_show` (nie automatisch ausblenden), `threshold` (W), `secondary` (`entity`, `label`, `unit`) |
 | `layout` | `mode`: `auto` (Standard), `wide`, `mid`, `narrow`; Umschaltpunkte `wide_min` (1100 px), `mid_min` (680 px); `consumers`: `bottom` (Standard, Reihen unter dem Haus; eine einzelne Reihe bekommt größere Kacheln), `group` (als Kasten rechts) oder `auto` (rechte Spalte zuerst); `climate`: `right` (Standard, unter dem E-Auto) oder `left` (über dem Netz). Außer bei `consumers: auto` steht der Speicher über dem Netz und beide Seitenspalten sind gleich breit; `text_scale`: zusätzlicher Schriftfaktor, z. B. `1.15` (die wichtigsten Werte wachsen ohnehin automatisch, wenn die Karte klein dargestellt wird) |
-| `theme` | `preset`: `blau`, `dunkel`, `mitternacht`, `petrol`, `violett`, `grafit`, `hell`, `hell-blau`, `hell-violett`; `wires`: `puls`, `strich`, `ruhig`; Feinschliff mit `center`, `edge`, `spread`, `tile` |
+| `theme` | `preset`: `blau`, `dunkel`, `mitternacht`, `petrol`, `violett`, `grafit`, `hell`, `hell-blau`, `hell-violett`; `wires`: `puls`, `strich`, `ruhig`; Feinschliff mit `center`, `edge`, `spread`, `tile`; `style`: `glas` (Standard) oder `app` (siehe unten) |
+| `app` | nur für `theme.style: app`: `weather`: `auto` (Standard, folgt `header.weather`, `header.temp` und `sun.sun`), `off` oder fest `sunny`, `partly`, `cloudy`, `fog`, `rainy`, `snowy`, `night`, `frost`; `image`: eigenes Szenenbild (Aufteilung 1024 × 568); `anchors`: Ankerpunkte der Beschriftungen für dieses Bild (`pv_house`, `pv_garage`, `pv_shed`, `home`, `grid`, `car`, `climate`, jeweils `[x, y]` in 1024 × 568) |
+
+### App-Stil
+
+`theme: { style: app }` ersetzt die Glas-Zeichnung durch eine helle Ansicht im App-Stil: ein Foto von Wohnhaus, Garage und Gartenhaus, die Live-Werte mit dünnen Linien daran, darunter kompakte Zeilen (PV-Prognose, Speicher, E-Auto, Netz heute, Klima) und die Verbraucher als Kacheln. Jeder eingetragene Speicher steht als Schrank vor der Garage (bis zu vier, danach „+n“), eine grüne LED zeigt den Ladestand. Die Szene folgt dem Wetter: Sonne, Wolken, Regen, Schnee, Frost ab 0 °C und eine Nachtansicht mit beleuchteten Fenstern. Mit `building` ordnest du jede PV-Anlage einem Gebäude zu und bekommst je Gebäude eine Beschriftung. Alles andere (ausgeblendete Verbraucher, Details per Tippen, der Editor) funktioniert wie im Glas-Stil.
 
 ## Glass Energy Battery Card
 

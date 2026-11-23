@@ -21,7 +21,7 @@ jobs:
       - name: Read the card version
         id: version
         run: |
-          v=$(sed -n 's/.*const CARD_VERSION = "\([0-9][0-9.]*\)".*/\1/p' dist/glass-energy-flow-card.js | head -1)
+          v=$(sed -n 's/.*const CARD_VERSION = "\([0-9][0-9A-Za-z.-]*\)".*/\1/p' dist/glass-energy-flow-card.js | head -1)
           if [ -z "$v" ]; then echo "CARD_VERSION not found"; exit 1; fi
           echo "tag=v$v" >> "$GITHUB_OUTPUT"
 
@@ -33,5 +33,9 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "$TAG is already released"
           else
-            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+            # A version with a suffix such as 1.7.0-beta.1 becomes a pre-release:
+            # HACS only offers it to users who switched on beta versions.
+            pre=""
+            case "$TAG" in *-*) pre="--prerelease" ;; esac
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes $pre
           fi

@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.6.0";
+  const CARD_VERSION = "1.7.0-beta.1";
 
   // ------------------------------------------------------------------ i18n
   // The UI follows Home Assistant's language: German for "de", English
@@ -204,6 +204,21 @@
     "Entfernen": "Remove",
     "Hinzufügen": "Add",
     "Tipp: Steckdosen-Sensoren heißen meist „sensor.steckdose_…_power“.": "Tip: smart plug sensors are usually named “sensor.…_power”.",
+    "Stil": "Style",
+    "Glas (Standard)": "Glass (default)",
+    "App · Foto-Szene mit Wetter (Beta)": "App · photo scene with weather (beta)",
+    "Gebäude (App-Stil)": "Building (app style)",
+    "Wohnhaus": "House",
+    "Garage": "Garage",
+    "Gartenhaus": "Garden house",
+    "Solar": "Solar",
+    "verbunden": "plugged in",
+    "voll in": "full in",
+    "PV-Prognose": "PV forecast",
+    "PV gesamt": "PV total",
+    "PV-Ertrag": "PV yield",
+    "Netz heute": "Grid today",
+    "Bezug": "Import",
   };
   const T = (s) => (LANG === "de" ? s : (EN[s] ?? s));
 
@@ -423,6 +438,8 @@
     const tile = Number(cfg.theme.tile);
     cfg.theme.tile = clamp(cfg.theme.tile == null || cfg.theme.tile === "" || !Number.isFinite(tile)
       ? preset.tile : tile, 0, 90);
+    cfg.theme.style = cfg.theme.style === "app" ? "app" : "glas";
+    cfg.app = cfg.app || {};
     if (cfg.theme.mode !== "hell" && cfg.theme.mode !== "dunkel") {
       cfg.theme.mode = preset.mode || "dunkel";
     }
@@ -2019,6 +2036,509 @@ function step1Battery(x,y,w,h,b,compact) {
   }
 
   // ------------------------------------------------------------------- card
+  // =================================================================== app style
+  // A second look for the card: a light, app-like page with a photo of the
+  // property, the live values pinned around it with thin leader lines, compact
+  // rows below and the consumers as tiles. Picked with `theme.style: app`; the
+  // glass look stays the default. The scene photo is in the 1024 x 568 space
+  // that every anchor below uses.
+  const APP_VB = [1024, 568];
+  const APP_SCENE = {
+    image: "scene-house.jpg",
+    anchors: {
+      pv_house: [505, 210], pv_garage: [690, 360], pv_shed: [866, 238],
+      home: [645, 235], grid: [972, 300], car: [470, 470], climate: [410, 255],
+    },
+    // Battery cabinets stand in a row in front of the garage side wall: the
+    // wall runs along `along`, `out` points away from it, both from `origin`.
+    batteries: { origin: [678, 500], along: [1, -0.5], out: [0.95, 0.42], max: 4 },
+    // Lit windows for the night view, in percent of the scene.
+    windows: [[37, 40, 7], [48, 48, 6], [37, 59, 6], [47, 65, 5], [56, 74, 3]],
+  };
+  const APP_BUILDINGS = { house: "Wohnhaus", garage: "Garage", shed: "Gartenhaus" };
+  // Where each label sits on a wide card and on a phone. x/y are the label
+  // position in scene units, side is the text alignment, below flips it under
+  // its anchor.
+  const APP_SPOTS = {
+    wide: {
+      pv_total: { x: 28, y: 52, side: "r", below: 1, free: 1 },
+      pv_house: { x: 508, y: 70 }, pv_garage: { x: 745, y: 255, side: "r" }, pv_shed: { x: 866, y: 135 },
+      home: { x: 655, y: 95, side: "r" }, grid: { x: 1012, y: 420, side: "l", below: 1 },
+      climate: { x: 250, y: 215, side: "l" }, car: { x: 330, y: 500, side: "l", below: 1 },
+      bat0: { x: 690, y: 478, side: "l", below: 1 }, bat1: { x: 790, y: 478, side: "r", below: 1 },
+      bats: { x: 790, y: 478, side: "r", below: 1 },
+    },
+    narrow: {
+      pv_house: { x: 430, y: 90, side: "l" }, home: { x: 660, y: 110, side: "r" },
+      grid: { x: 1015, y: 470, side: "l", below: 1 }, car: { x: 300, y: 470, side: "l", below: 1 },
+      bats: { x: 735, y: 490, side: "l", below: 1 },
+    },
+  };
+
+  /** Map the weather entity (and the outdoor temperature) to a scene mood. */
+  function appWeather(hass, c) {
+    const app = c.app || {};
+    if (app.weather === false || app.weather === "off") return { kind: "none", frost: false };
+    let kind = typeof app.weather === "string" && app.weather !== "auto" ? app.weather : null;
+    const temp = num(hass, c.header && c.header.temp);
+    if (!kind) {
+      const w = c.header && c.header.weather ? hass.states[c.header.weather] : null;
+      const s = w ? String(w.state) : "";
+      kind = ({
+        sunny: "sunny", "clear-night": "night", partlycloudy: "partly", cloudy: "cloudy",
+        fog: "fog", windy: "cloudy", "windy-variant": "cloudy", exceptional: "cloudy",
+        rainy: "rainy", pouring: "rainy", lightning: "rainy", "lightning-rainy": "rainy",
+        snowy: "snowy", "snowy-rainy": "snowy", hail: "snowy",
+      })[s] || (w ? "cloudy" : "sunny");
+      const sun = hass.states["sun.sun"];
+      if (sun && sun.state === "below_horizon" && kind !== "rainy" && kind !== "snowy") kind = "night";
+    }
+    const frost = app.weather === "frost" || (temp != null && temp <= 0 && kind !== "rainy" && kind !== "snowy");
+    if (kind === "frost") kind = "sunny";
+    return { kind, frost };
+  }
+
+  /** Effect layer (sun, clouds, rain, snow, frost, night) as plain markup. */
+  function appWeatherFx(w, scene) {
+    const cloud = (cls, l, t, wd, dly = 0) =>
+      `<div class="cloud ${cls}" style="left:${l}%;top:${t}%;width:${wd}%;animation-delay:${dly}s"></div>`;
+    const crystals = (n) => {
+      const R = (s) => { const x = Math.sin(s) * 10000; return x - Math.floor(x); };
+      let g = "";
+      for (let i = 0; i < n; i++) {
+        const cx = (R(i * 3.1) < 0.5 ? R(i * 1.7) * 18 : 82 + R(i * 1.7) * 18) * 10.24;
+        const cy = R(i * 5.3) * 5.68 * 100, s = 4 + R(i * 7.9) * 9;
+        g += `<g transform="translate(${cx.toFixed(1)},${cy.toFixed(1)}) rotate(${(R(i) * 60).toFixed(0)})" opacity="${(0.5 + R(i * 2.2) * 0.5).toFixed(2)}">${
+          [0, 60, 120].map((a) => `<g transform="rotate(${a})"><line x1="${-s}" x2="${s}" y1="0" y2="0"/><line x1="${s * 0.5}" y1="0" x2="${s * 0.75}" y2="${s * 0.22}"/><line x1="${s * 0.5}" y1="0" x2="${s * 0.75}" y2="${-s * 0.22}"/></g>`).join("")}</g>`;
+      }
+      return `<svg class="crystals" viewBox="0 0 1024 568" preserveAspectRatio="none">${g}</svg>`;
+    };
+    let fx = "";
+    switch (w.kind) {
+      case "sunny": fx = `<div class="warm"></div><div class="rays"></div><div class="sun"></div>${cloud("", 66, 6, 16, -20)}`; break;
+      case "partly": fx = `<div class="rays" style="opacity:.22"></div><div class="sun" style="opacity:.75"></div>${cloud("", 58, 4, 20, -10)}${cloud("", 20, 0, 16, -40)}`; break;
+      case "cloudy": fx = `${cloud("grey", 4, 0, 30)}${cloud("grey", 40, -3, 32, -30)}${cloud("grey", 72, 2, 28, -55)}`; break;
+      case "fog": fx = `${cloud("grey", 10, 0, 30)}<div class="fog"></div>`; break;
+      case "rainy": fx = `${cloud("dark", 2, 0, 30)}${cloud("dark", 34, -4, 34, -30)}${cloud("dark", 70, 2, 30, -50)}<div class="puddle"></div><div class="rain"></div><div class="rain b"></div>`; break;
+      case "snowy": fx = `${cloud("grey", 6, 0, 28)}${cloud("grey", 60, -2, 32, -40)}<div class="snowcap"></div>${crystals(10)}<div class="snow"></div>`; break;
+      case "night": fx = `<div class="stars"></div><div class="moon"></div>${scene.windows ? scene.windows.map(([l, t, s]) =>
+        `<div class="glow" style="left:${l}%;top:${t}%;width:${s}%"></div>`).join("") : ""}`; break;
+      default: break;
+    }
+    if (w.frost) fx += `<div class="frost"></div>${w.kind === "snowy" ? "" : crystals(26)}`;
+    return fx;
+  }
+
+  /** Battery cabinets (gray stacked modules, dark cap, green charge LED). */
+  function appBatteriesSvg(bats, spec) {
+    if (!bats.length) return "";
+    const { origin: O, along: A, out: B } = spec;
+    const G = (a, b, z = 0) => [O[0] + a * A[0] + b * B[0], O[1] + a * A[1] + b * B[1] - z];
+    const P = (...q) => q.map((v) => v[0].toFixed(1) + "," + v[1].toFixed(1)).join(" ");
+    const W = 26, GAP = 5, D = 11, H = 54, shown = Math.min(bats.length, spec.max || 4);
+    const slot = (i) => 10 + i * (W + GAP);
+    let s = "";
+    for (let i = shown - 1; i >= 0; i--) {
+      const a0 = slot(i), a1 = a0 + W, cap = H * 0.8;
+      s += `<polygon points="${P(G(a0 - 2, 0), G(a1 + 4, 0), G(a1 + 10, D + 8), G(a0 + 2, D + 8))}" fill="#5d6d80" opacity=".28" filter="url(#app-bshadow)"/>`;
+      s += `<polygon points="${P(G(a0, 0), G(a0, D), G(a0, D, H), G(a0, 0, H))}" fill="url(#app-bside)"/>`;
+      s += `<polygon points="${P(G(a0, D), G(a1, D), G(a1, D, H), G(a0, D, H))}" fill="url(#app-bfront)"/>`;
+      s += `<polygon points="${P(G(a0, D, cap), G(a1, D, cap), G(a1, D, H), G(a0, D, H))}" fill="#3b4148"/>`;
+      s += `<polygon points="${P(G(a0, 0, cap), G(a0, D, cap), G(a0, D, H), G(a0, 0, H))}" fill="#2b3036"/>`;
+      s += `<polygon points="${P(G(a0, 0, H), G(a1, 0, H), G(a1, D, H), G(a0, D, H))}" fill="#4a5058"/>`;
+      [0.2, 0.4, 0.6].forEach((t) => {
+        s += `<polyline points="${P(G(a0, 0, H * t), G(a0, D, H * t), G(a1, D, H * t))}" fill="none" stroke="#7d848c" stroke-width=".7" opacity=".8"/>`;
+      });
+      s += `<polygon points="${P(G(a1 - 3, D), G(a1, D), G(a1, D, cap), G(a1 - 3, D, cap))}" fill="#30363c" opacity=".85"/>`;
+      const b = bats[i], soc = clamp((b.socValue == null ? 0 : b.socValue) / 100, 0.04, 1);
+      const l0 = G(a0 + 4, D, H * 0.9), lb = G(a1 - 5, D, H * 0.9), l1 = G(a0 + 4 + (W - 9) * soc, D, H * 0.9);
+      const led = b.active ? (b.charging ? "#46f0a6" : "#ffb028") : "#46f0a6";
+      s += `<g data-entity="${esc(b.soc || b.power)}" class="clickable">
+        <line x1="${l0[0]}" y1="${l0[1]}" x2="${lb[0]}" y2="${lb[1]}" stroke="#596068" stroke-width="1.6" stroke-linecap="round"/>
+        <line class="${b.active ? "led-on" : ""}" x1="${l0[0]}" y1="${l0[1]}" x2="${l1[0]}" y2="${l1[1]}" stroke="${led}" stroke-width="2.6" stroke-linecap="round" filter="url(#app-ledglow)"/>
+        <line x1="${l0[0]}" y1="${l0[1]}" x2="${l1[0]}" y2="${l1[1]}" stroke="#eafff5" stroke-width="1" stroke-linecap="round" opacity=".8"/></g>`;
+    }
+    if (bats.length > shown) {
+      const t = G(slot(shown) + 4, D, 26);
+      s += `<text x="${t[0]}" y="${t[1]}" font-size="13" font-weight="700" fill="#3b4148">+${bats.length - shown}</text>`;
+    }
+    const c0 = G(slot(0) - 2, 4, 2);
+    s += `<path d="M${c0[0]},${c0[1]} l-26,-11" stroke="#e8c341" stroke-width="2" stroke-linecap="round" opacity=".9"/>`;
+    return s;
+  }
+  const appBatAnchor = (spec, i) => {
+    const { origin: O, along: A, out: B } = spec;
+    const a = 10 + i * 31 + 13;
+    return [O[0] + a * A[0] + 11 * B[0], O[1] + a * A[1] + 11 * B[1] - 30];
+  };
+
+  const APP_CHEV = `<svg viewBox="0 0 24 24"><path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/></svg>`;
+
+  const APP_CSS = `
+    :host { display:block; }
+    .app { --ink:#0f1a2a; --soft:#66768b; --prod:#14a86f; --disch:#d9860f; --gridc:#2f86de;
+      position:relative; border-radius:var(--ha-card-border-radius, 24px); overflow:hidden; padding:18px 18px 16px;
+      font-family: var(--ha-font-family-body, Inter, "Segoe UI", Roboto, system-ui, sans-serif); color:var(--ink);
+      container-type:inline-size;
+      background: radial-gradient(ellipse 50% 40% at 0% 0%, #f6f9fb, rgba(246,249,251,0) 70%),
+                  linear-gradient(180deg,#cde4f4 0%,#dcebf5 35%,#e8eff4 60%,#eef2f5 100%); }
+    .hdr { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; position:relative; z-index:6; }
+    .t { font-size:clamp(20px, 2.2cqw, 28px); font-weight:700; letter-spacing:-.01em; }
+    .meters { font-size:13px; color:var(--soft); margin-top:3px; display:flex; flex-wrap:wrap; gap:2px 14px; }
+    .meters span { white-space:nowrap; } .meters b { color:var(--ink); font-weight:600; }
+    .chips { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; }
+    .chip { white-space:nowrap; display:flex; align-items:center; gap:6px; background:rgba(255,255,255,.72);
+      backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); border-radius:999px; padding:6px 12px;
+      font-size:13px; font-weight:500; box-shadow:0 1px 2px rgba(20,40,70,.05); }
+    .chip ha-icon { --mdc-icon-size:16px; color:#5b6b80; }
+    .scene { position:relative; margin:-26px -18px 0; }
+    .narrow .scene { margin-top:20px; padding-bottom:42px; }
+    .narrow .chip.opt { display:none; } .narrow .chip { padding:5px 10px; }
+    .narrow .meters { flex-direction:column; }
+    .photo { width:100%; display:block; aspect-ratio:1024/568; object-fit:cover; transition:filter .8s;
+      -webkit-mask-image:linear-gradient(180deg, transparent 0%, #000 9%, #000 84%, transparent 100%);
+              mask-image:linear-gradient(180deg, transparent 0%, #000 9%, #000 84%, transparent 100%); }
+    .over, .fx, .leaders { position:absolute; left:0; top:0; width:100%; aspect-ratio:1024/568; height:auto; pointer-events:none; }
+    .over { pointer-events:none; transition:filter .8s; } .over .clickable { pointer-events:auto; cursor:pointer; }
+    .fx { overflow:hidden;
+      -webkit-mask-image:linear-gradient(180deg, transparent 0%, #000 9%, #000 84%, transparent 100%);
+              mask-image:linear-gradient(180deg, transparent 0%, #000 9%, #000 84%, transparent 100%); }
+    .labels { position:absolute; left:0; top:0; width:100%; aspect-ratio:1024/568; }
+    .lbl { position:absolute; white-space:nowrap; transform:translate(-50%,-100%); padding-bottom:6px; z-index:5; cursor:pointer; }
+    .lbl.r { transform:translate(0,-100%); padding-left:8px; }
+    .lbl.l { transform:translate(-100%,-100%); padding-right:8px; text-align:right; }
+    .lbl.below { transform:translate(-50%,0); padding:6px 0 0; }
+    .lbl.r.below { transform:translate(0,0); padding-left:8px; } .lbl.l.below { transform:translate(-100%,0); padding-right:8px; }
+    .box { display:inline-block; padding:5px 10px 6px; border-radius:14px; background:rgba(255,255,255,.62);
+      backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); box-shadow:0 2px 10px rgba(30,60,100,.08); }
+    .lbl .n { display:block; font-size:clamp(10.5px, 0.9cqw, 13px); color:var(--soft); }
+    .lbl .v { display:inline-flex; align-items:center; gap:6px; font-size:clamp(15px, 1.4cqw, 21px); font-weight:700; letter-spacing:-.01em; }
+    .lbl .s { display:block; font-size:clamp(10.5px, 0.86cqw, 12.5px); color:var(--soft); margin-top:1px; }
+    .s.g { color:var(--prod); font-weight:600; } .s.o { color:var(--disch); font-weight:600; } .s.b { color:var(--gridc); font-weight:600; }
+    .lbl.big .box { padding:8px 14px 9px; border-radius:18px; background:rgba(255,255,255,.78); }
+    .lbl.big .n { font-weight:600; letter-spacing:.02em; }
+    .lbl.big .v { font-size:clamp(20px, 2.1cqw, 32px); }
+    .lbl.big .v::before { content:""; width:.62em; height:.62em; border-radius:50%; flex:none;
+      background:radial-gradient(circle, #ffd56b 0 45%, rgba(255,190,60,.35) 46% 70%, transparent 72%); }
+    .chev { width:17px; height:17px; border-radius:50%; background:rgba(255,255,255,.88); display:inline-flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(20,40,70,.14); flex:none; }
+    .chev svg { width:13px; height:13px; fill:#6b7a8f; }
+    .narrow .chev { width:14px; height:14px; } .narrow .box { padding:3px 7px 4px; border-radius:10px; }
+    .rows { display:grid; grid-template-columns:repeat(auto-fit, minmax(330px, 1fr)); gap:12px; position:relative; z-index:6; margin-top:6px; }
+    .narrow .rows { grid-template-columns:1fr; gap:0; background:rgba(255,255,255,.88); border-radius:20px; padding:4px 14px; box-shadow:0 8px 28px rgba(30,60,100,.07); }
+    .row { display:flex; align-items:center; gap:10px; background:rgba(255,255,255,.88); border-radius:20px; padding:12px 14px;
+      box-shadow:0 8px 28px rgba(30,60,100,.07), 0 1px 2px rgba(30,60,100,.05); cursor:pointer; min-width:0; }
+    .narrow .row { background:none; box-shadow:none; border-radius:0; padding:10px 0; border-top:1px solid #edf1f5; }
+    .narrow .row:first-child { border-top:0; }
+    .ic { width:30px; height:30px; border-radius:10px; background:#eef3f8; display:flex; align-items:center; justify-content:center; flex:none; }
+    .ic ha-icon { --mdc-icon-size:18px; color:#40526a; }
+    .row .tx { flex:1; min-width:0; font-size:15px; font-weight:600; }
+    .row .tx small { display:block; color:var(--soft); font-size:12.5px; font-weight:400; margin-top:2px; }
+    .narrow .row .tx small { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .row .val { font-weight:700; white-space:nowrap; } .row > svg { width:18px; height:18px; fill:#9aa7b8; flex:none; }
+    .cons { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-top:12px; position:relative; z-index:6; }
+    .narrow .cons { grid-template-columns:1fr 1fr; }
+    .tile { background:rgba(255,255,255,.88); border-radius:18px; padding:12px; display:flex; align-items:center; gap:10px; box-shadow:0 6px 20px rgba(30,60,100,.06); cursor:pointer; min-width:0; }
+    .tile .im { width:40px; height:40px; border-radius:12px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; flex:none; }
+    .tile .im img { width:36px; height:36px; object-fit:contain; } .tile .im ha-icon { --mdc-icon-size:22px; }
+    .tile .tt { font-size:13px; color:var(--soft); min-width:0; } .tile .tt b { display:block; color:var(--ink); font-size:16px; margin-top:1px; }
+    .tile .tt small { display:block; font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .tile.idle { opacity:.6; }
+
+    /* weather moods */
+    .w-sunny .photo, .w-sunny .over { filter:saturate(1.08) brightness(1.03); }
+    .w-cloudy .photo, .w-cloudy .over, .w-fog .photo, .w-fog .over { filter:saturate(.8) brightness(.96); }
+    .w-rainy .photo, .w-rainy .over { filter:saturate(.7) brightness(.86) contrast(1.02) hue-rotate(-6deg); }
+    .w-snowy .photo, .w-snowy .over { filter:saturate(.65) brightness(1.02) contrast(.92); }
+    .frost .photo, .frost .over { filter:saturate(.7) brightness(1.04) hue-rotate(8deg); }
+    .w-night .photo, .w-night .over { filter:brightness(.42) saturate(.75) hue-rotate(12deg); }
+    .w-rainy.app { background:linear-gradient(180deg,#a9b8c6 0%,#c5cfd8 40%,#dfe4e9 100%); }
+    .w-cloudy.app, .w-fog.app { background:linear-gradient(180deg,#d3dce4 0%,#e1e7ec 45%,#edf0f3 100%); }
+    .w-snowy.app { background:linear-gradient(180deg,#d6dee6 0%,#e7ecf1 45%,#f4f6f8 100%); }
+    .frost.app { background:linear-gradient(180deg,#d4e7f5 0%,#e4f0f8 45%,#f1f6f9 100%); }
+    .w-night.app { --ink:#fff; --soft:#a8b6c9; --prod:#3fe0a0; --disch:#ffb84a; --gridc:#7cbcff; background:linear-gradient(180deg,#0e1830 0%,#17223d 45%,#1e2840 100%); }
+    .w-night .box { background:rgba(12,20,38,.55); box-shadow:none; }
+    .w-night .chip { background:rgba(255,255,255,.12); } .w-night .chip ha-icon { color:#c9d4e3; }
+    .w-night .row, .w-night .tile, .w-night.narrow .rows { background:rgba(255,255,255,.08); box-shadow:none; }
+    .w-night.narrow .row { background:none; border-color:rgba(255,255,255,.08); }
+    .w-night .ic, .w-night .tile .im { background:rgba(255,255,255,.1); } .w-night .ic ha-icon { color:#c9d4e3; }
+    .w-night .chev { background:rgba(255,255,255,.16); } .w-night .chev svg { fill:#dfe7f1; }
+    .fx .sun { position:absolute; left:4%; top:2%; width:34%; aspect-ratio:1; border-radius:50%;
+      background:radial-gradient(circle, rgba(255,250,228,.95) 0 6%, rgba(255,238,190,.55) 14%, rgba(255,236,200,.18) 34%, rgba(255,240,215,0) 62%);
+      animation:app-pulse 6s ease-in-out infinite; }
+    .fx .rays { position:absolute; left:-8%; top:-20%; width:58%; aspect-ratio:1; opacity:.35;
+      background:repeating-conic-gradient(from 0deg, rgba(255,246,214,.55) 0 4deg, rgba(255,246,214,0) 4deg 18deg);
+      -webkit-mask-image:radial-gradient(circle, #000 10%, transparent 62%); mask-image:radial-gradient(circle, #000 10%, transparent 62%);
+      animation:app-spin 90s linear infinite; }
+    .fx .warm { position:absolute; inset:0; background:linear-gradient(125deg, rgba(255,214,140,.16), rgba(255,214,140,0) 45%); mix-blend-mode:soft-light; }
+    .fx .cloud { position:absolute; aspect-ratio:2.4; filter:blur(2px); opacity:.92; animation:app-drift 80s linear infinite;
+      background:radial-gradient(ellipse 36% 60% at 32% 62%, #fff 60%, transparent 62%), radial-gradient(ellipse 30% 70% at 56% 45%, #fff 60%, transparent 62%), radial-gradient(ellipse 30% 52% at 76% 64%, #fff 60%, transparent 62%); }
+    .fx .cloud.grey { filter:blur(3px); background:radial-gradient(ellipse 36% 60% at 32% 62%, #d5dce3 60%, transparent 62%), radial-gradient(ellipse 30% 70% at 56% 45%, #e1e6eb 60%, transparent 62%), radial-gradient(ellipse 30% 52% at 76% 64%, #cfd7df 60%, transparent 62%); }
+    .fx .cloud.dark { opacity:.55; filter:blur(14px); background:radial-gradient(ellipse 36% 60% at 32% 62%, #8b98a7 60%, transparent 62%), radial-gradient(ellipse 30% 70% at 56% 45%, #96a3b1 60%, transparent 62%), radial-gradient(ellipse 30% 52% at 76% 64%, #8592a1 60%, transparent 62%); }
+    .fx .fog { position:absolute; inset:0; background:linear-gradient(180deg, rgba(240,244,247,.55), rgba(240,244,247,.25) 50%, rgba(240,244,247,.6)); }
+    .fx .rain { position:absolute; inset:0; opacity:.55; background-image:linear-gradient(105deg, transparent 0 48%, rgba(214,228,242,.9) 49% 51%, transparent 52%);
+      background-size:22px 46px; animation:app-rain .45s linear infinite; }
+    .fx .rain.b { background-size:31px 70px; opacity:.35; animation-duration:.6s; background-position:11px 20px; }
+    .fx .puddle { position:absolute; left:0; right:0; bottom:0; height:30%; background:linear-gradient(180deg, transparent, rgba(120,140,160,.18)); }
+    .fx .snow { position:absolute; inset:0; filter:drop-shadow(0 0 1px rgba(120,140,170,.4)); animation:app-snow 9s linear infinite;
+      background-image:radial-gradient(circle, #fff 0 1.6px, transparent 2.4px), radial-gradient(circle, #fff 0 2.4px, transparent 3.2px), radial-gradient(circle, rgba(255,255,255,.8) 0 1.2px, transparent 2px);
+      background-size:80px 80px, 140px 140px, 55px 55px; background-position:0 0, 40px 60px, 20px 30px; }
+    .fx .snowcap { position:absolute; inset:0; background:linear-gradient(180deg, rgba(255,255,255,0) 40%, rgba(255,255,255,.35) 100%); }
+    .fx .frost { position:absolute; inset:0; background:
+      radial-gradient(ellipse 30% 40% at 0% 0%, rgba(255,255,255,.9), rgba(230,244,255,.4) 40%, transparent 70%),
+      radial-gradient(ellipse 30% 40% at 100% 0%, rgba(255,255,255,.85), rgba(230,244,255,.35) 40%, transparent 70%),
+      radial-gradient(ellipse 28% 36% at 0% 100%, rgba(255,255,255,.8), transparent 70%),
+      radial-gradient(ellipse 28% 36% at 100% 100%, rgba(255,255,255,.8), transparent 70%),
+      linear-gradient(180deg, rgba(200,228,255,.18), rgba(200,228,255,.08)); }
+    .fx .crystals { position:absolute; inset:0; width:100%; height:100%; stroke:#fff; stroke-width:1; }
+    .fx .stars { position:absolute; inset:0 0 55% 0; opacity:.8; animation:app-twinkle 4s ease-in-out infinite;
+      background-image:radial-gradient(circle, #fff 0 1px, transparent 1.6px), radial-gradient(circle, rgba(255,255,255,.7) 0 .8px, transparent 1.4px);
+      background-size:97px 61px, 53px 89px; background-position:13px 7px, 41px 29px; }
+    .fx .moon { position:absolute; right:22%; top:4%; width:44px; height:44px; border-radius:50%; box-shadow:-10px 6px 0 0 #f4efd8; transform:rotate(-20deg); filter:drop-shadow(0 0 12px rgba(255,246,214,.55)); }
+    .fx .glow { position:absolute; aspect-ratio:1; transform:translate(-50%,-50%); border-radius:50%; background:radial-gradient(circle, rgba(255,200,120,.6), rgba(255,200,120,0) 70%); mix-blend-mode:screen; }
+    .led-on { animation:app-led 2.4s ease-in-out infinite; }
+    @keyframes app-pulse { 50% { transform:scale(1.05); opacity:.9; } }
+    @keyframes app-spin { to { transform:rotate(360deg); } }
+    @keyframes app-drift { 0%, 100% { transform:translateX(-6%); } 50% { transform:translateX(6%); } }
+    @keyframes app-rain { to { background-position:-10px 46px; } }
+    @keyframes app-snow { to { background-position:20px 80px, 60px 200px, 30px 85px; } }
+    @keyframes app-twinkle { 50% { opacity:.5; } }
+    @keyframes app-led { 50% { opacity:.55; } }
+    @media (prefers-reduced-motion: reduce) { .fx *, .led-on { animation:none !important; } }
+  `;
+
+  const APP_METHODS = {
+    _appScene() {
+      const app = this._config.app || {};
+      const base = APP_SCENE;
+      return {
+        ...base,
+        image: app.image || BUILTIN_BASE + base.image,
+        anchors: { ...base.anchors, ...(app.anchors || {}) },
+        windows: app.image ? null : base.windows,
+      };
+    },
+
+    _buildApp() {
+      const c = this._config, h = c.header || {};
+      const chip = (id, ic, opt) => `<div class="chip${opt ? " opt" : ""}"><ha-icon id="${id}Icon" icon="${ic}"></ha-icon><span id="${id}">–</span></div>`;
+      const sc = this._appScene();
+      this.shadowRoot.innerHTML = `<style>${APP_CSS}</style>
+        <div class="app" id="app">
+          <div class="hdr">
+            <div><div class="t">${esc(c.title || T("Energie"))}</div><div class="meters" id="meters"></div></div>
+            <div class="chips">${[
+              h.temp ? chip("headerTemp", "mdi:thermometer") : "",
+              h.humidity ? chip("headerHumidity", "mdi:water-percent", 1) : "",
+              h.weather ? chip("headerWeather", "mdi:weather-cloudy") : "",
+              h.uv ? chip("headerUv", "mdi:weather-sunny-alert", 1) : "",
+            ].join("")}</div>
+          </div>
+          <div class="scene">
+            <img class="photo" src="${esc(sc.image)}" alt="">
+            <svg class="over" viewBox="0 0 ${APP_VB[0]} ${APP_VB[1]}"><defs>
+              <linearGradient id="app-bfront" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c9cdd2"/><stop offset="1" stop-color="#9ea4ab"/></linearGradient>
+              <linearGradient id="app-bside" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6f767e"/><stop offset="1" stop-color="#868d95"/></linearGradient>
+              <filter id="app-bshadow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+              <filter id="app-ledglow" x="-50%" y="-200%" width="200%" height="500%"><feGaussianBlur stdDeviation="1.2"/></filter>
+            </defs><g id="bats"></g></svg>
+            <div class="fx" id="fx"></div>
+            <svg class="leaders" id="leaders" viewBox="0 0 ${APP_VB[0]} ${APP_VB[1]}"></svg>
+            <div class="labels" id="labels"></div>
+          </div>
+          <div class="rows" id="rows"></div>
+          <div class="cons" id="cons"></div>
+        </div>`;
+      const root = this.shadowRoot.getElementById("app");
+      root.addEventListener("click", (ev) => {
+        const g = ev.composedPath().find((n) => n.dataset && n.dataset.entity);
+        if (!g) return;
+        this.dispatchEvent(new CustomEvent("hass-more-info", {
+          detail: { entityId: g.dataset.entity }, bubbles: true, composed: true,
+        }));
+      });
+      this._appSig = {};
+      this._built = true;
+    },
+
+    /** Replace a section only when its markup really changed. */
+    _appSet(id, html) {
+      if (this._appSig[id] === html) return;
+      this._appSig[id] = html;
+      const el = this.shadowRoot.getElementById(id);
+      if (el) el.innerHTML = html;
+    },
+
+    _appLabels(d, narrow, sc) {
+      const c = this._config, A = sc.anchors, S = APP_SPOTS[narrow ? "narrow" : "wide"];
+      const out = [];
+      const add = (key, at, o) => { const spot = S[key]; if (spot && at) out.push({ key, at, ...spot, ...o }); };
+      // Solar: per building when the strings say where they sit, otherwise one total.
+      const night = (v) => fmtW(v);
+      const byB = {};
+      d.solar.forEach((s) => { if (s.building && APP_BUILDINGS[s.building]) (byB[s.building] = byB[s.building] || []).push(s); });
+      const sum = (arr) => arr.reduce((a, s) => a + (s.value || 0), 0);
+      if (d.solar.length) {
+        if (!narrow && Object.keys(byB).length) {
+          const unplaced = d.solar.filter((s) => !s.building || !APP_BUILDINGS[s.building]);
+          if (unplaced.length) byB.house = (byB.house || []).concat(unplaced);
+          add("pv_total", [0, 0], {
+            n: T("PV gesamt"), v: fmtW(d.pvTotal), big: 1, entity: d.pvEnergy.entity || d.solar[0].entity,
+            s: d.pvEnergy.entity ? `${T("Heute")} ${fmtPvEnergy(d.pvEnergy.value)}` : null, sc: "o",
+          });
+          Object.entries(byB).forEach(([b, arr]) => add("pv_" + b, A["pv_" + b], {
+            n: `${T("Solar")} ${T(APP_BUILDINGS[b])}`, v: night(sum(arr)),
+            s: arr.length > 1 ? arr.map((s) => `${s.name || ""} ${fmtW(s.value).replace(/ (k?W)$/, "")}`.trim()).join(" · ") : null,
+            entity: arr[0].entity,
+          }));
+        } else {
+          add("pv_house", A.pv_house, {
+            n: T("Solar"), v: fmtW(d.pvTotal), entity: d.solar[0].entity,
+            s: !narrow && d.solar.length > 1 && d.solar.length <= 4
+              ? d.solar.map((s) => `${s.name || ""} ${fmtW(s.value).replace(/ (k?W)$/, "")}`.trim()).join(" · ") : null,
+          });
+        }
+      }
+      if (c.home.entity) add("home", A.home, { n: narrow ? T("Haus") : T("Hausverbrauch"), v: fmtW(d.home), entity: c.home.entity });
+      if (c.grid.entity) {
+        const g = d.gridDisplayValue ?? d.gridValue;
+        add("grid", A.grid, {
+          n: c.grid.name || T("Netz"), v: fmtW(g == null ? null : Math.abs(g)), entity: c.grid.entity,
+          s: d.gridExport ? T("Einspeisung") : d.gridImport ? T("Netzbezug") : null, sc: "b",
+        });
+      }
+      const bats = d.batteries;
+      const batState = (b) => !b.active ? null : b.charging ? T("lädt") : T("entlädt");
+      if (bats.length && (narrow || bats.length > 2)) {
+        const socs = bats.map((b) => b.socValue).filter((v) => v != null);
+        const avg = socs.length ? socs.reduce((a, v) => a + v, 0) / socs.length : null;
+        const pw = bats.reduce((a, b) => a + (b.powerValue || 0), 0);
+        const charging = pw < -5, active = Math.abs(pw) > 5;
+        add("bats", appBatAnchor(sc.batteries, Math.min(bats.length, sc.batteries.max) - 1), {
+          n: bats.length > 1 ? `${T("Speicher")} (${bats.length})` : (bats[0].name || T("Speicher")),
+          v: narrow ? fmtBy("%", avg) : `${fmtBy("%", avg)} · ${fmtW(Math.abs(pw))}`,
+          s: narrow ? (active ? `${charging ? T("lädt") : T("entlädt")} ${fmtW(Math.abs(pw))}` : null)
+            : bats.map((b) => fmtBy("%", b.socValue)).join(" · ") + (active ? ` · ${charging ? T("lädt") : T("entlädt")}` : ""),
+          sc: charging ? "g" : "o", entity: bats[0].soc || bats[0].power,
+        });
+      } else {
+        bats.forEach((b, i) => add("bat" + i, appBatAnchor(sc.batteries, i), {
+          n: b.name || `${T("Speicher")} ${bats.length > 1 ? i + 1 : ""}`.trim(),
+          v: `${fmtBy("%", b.socValue)} · ${fmtW(b.powerValue == null ? null : Math.abs(b.powerValue))}`,
+          s: batState(b), sc: b.charging ? "g" : "o", entity: b.soc || b.power,
+        }));
+      }
+      const v = d.vehicles[0];
+      if (v) {
+        const st = v.charging ? T("lädt") + (v.timeToFull ? " · " + fmtDuration(v.timeToFull) : "") : v.plugged ? T("verbunden") : null;
+        add("car", A.car, {
+          n: v.name || T("E-Auto"), entity: v.soc || v.power, sc: "g",
+          v: narrow ? (v.charging ? fmtW(v.powerValue) : fmtBy("%", v.socValue))
+            : [v.socValue != null ? fmtBy("%", v.socValue) : null, v.charging ? fmtW(v.powerValue) : null].filter(Boolean).join(" · ") || "–",
+          s: narrow ? [v.charging && v.socValue != null ? fmtBy("%", v.socValue) : null, v.charging ? T("lädt") : null].filter(Boolean).join(" · ") || null : st,
+        });
+      }
+      if (d.climate.length) {
+        const p = d.climate.reduce((a, cl) => a + (cl.value || 0), 0);
+        const m = d.climate.length === 1 && d.climate[0].metricValues[0];
+        add("climate", A.climate, {
+          n: d.climate.length === 1 ? (d.climate[0].name || T("Klima")) : T("Klima"), v: fmtW(p),
+          s: m ? `${m.label || ""} ${fmtBy(m.unit || "kWh", m.value)}`.trim() : null,
+          entity: d.climate[0].entity || d.climate[0].state_entity,
+        });
+      }
+      return out;
+    },
+
+    _appRows(d) {
+      const c = this._config, hass = this._hass, rows = [];
+      const row = (icon, title, sub, val, entity) => rows.push({ icon, title, sub, val, entity });
+      if (d.pvForecast.length || d.pvEnergy.entity) {
+        row("mdi:solar-power", d.pvForecast.length ? T("PV-Prognose") : T("PV-Ertrag"),
+          d.pvForecast.map((f) => `${T(f.label)} ${fmtKWh(f.value).replace(" kWh", "")}`).join(" · ") + (d.pvForecast.length ? " kWh" : ""),
+          d.pvEnergy.entity ? fmtPvEnergy(d.pvEnergy.value) : "", d.pvEnergy.entity || d.pvForecast[0].entity);
+      }
+      if (d.batteries.length) {
+        const pw = d.batteries.reduce((a, b) => a + (b.powerValue || 0), 0);
+        row("mdi:home-battery", T("Speicher"), d.batteries.map((b, i) => `${b.name || T("Speicher") + " " + (i + 1)} ${fmtBy("%", b.socValue)}`).join(" · "),
+          Math.abs(pw) > 5 ? `${pw < 0 ? "↑" : "↓"} ${fmtW(Math.abs(pw))}` : fmtW(0), d.batteries[0].soc || d.batteries[0].power);
+      }
+      d.vehicles.forEach((v) => {
+        const sub = [v.rangeValue != null ? Math.round(v.rangeValue) + " km" : null,
+          v.charging && v.timeToFull ? T("voll in") + " " + fmtDuration(v.timeToFull) : v.plugged ? T("verbunden") : null].filter(Boolean).join(" · ");
+        row("mdi:car-electric", v.name || T("E-Auto"), sub || (v.charging ? T("lädt") : "–"), fmtBy("%", v.socValue), v.soc || v.power);
+      });
+      if (c.grid.entity && (c.grid.import_today || c.grid.export_today)) {
+        row(c.grid.icon || "mdi:transmission-tower", T("Netz heute"),
+          [c.grid.import_today ? `${T("Bezug")} ${fmtKWh(d.gridImportToday)}` : null,
+           c.grid.export_today ? `${T("Einspeisung")} ${fmtKWh(d.gridExportToday)}` : null].filter(Boolean).join(" · "),
+          fmtW(d.gridDisplayValue ?? d.gridValue), c.grid.import_today || c.grid.export_today);
+      }
+      if (d.climate.length > 1) {
+        row("mdi:air-conditioner", T("Klima"), d.climate.map((cl) => `${cl.name || ""} ${cl.value == null ? (cl.stateText || "–") : fmtW(cl.value)}`.trim()).join(" · "),
+          fmtW(d.climate.reduce((a, cl) => a + (cl.value || 0), 0)), d.climate[0].entity || d.climate[0].state_entity);
+      }
+      void hass;
+      return rows;
+    },
+
+    _updateApp() {
+      const hass = this._hass, c = this._config;
+      const d = this._data();
+      const root = this.shadowRoot.getElementById("app");
+      const w = this.clientWidth || root.clientWidth || 0;
+      const narrow = w > 0 && w < 600;
+      const sc = this._appScene();
+      const wx = appWeather(hass, c);
+      root.className = `app w-${wx.kind}${wx.frost ? " frost" : ""}${narrow ? " narrow" : ""}`;
+
+      // header
+      const h = c.header || {};
+      const set = (id, v) => { const el = this.shadowRoot.getElementById(id); if (el && el.textContent !== v) el.textContent = v; };
+      const meters = [
+        h.real_import ? `<span>${T("Bezug heute")} <b>${esc(fmtMeter(num(hass, h.real_import)))}</b></span>` :
+          c.grid.import_today ? `<span>${T("Bezug heute")} <b>${esc(fmtKWh(d.gridImportToday))}</b></span>` : "",
+        h.real_export ? `<span>${T("Einspeisung")} <b>${esc(fmtMeter(num(hass, h.real_export)))}</b></span>` :
+          c.grid.export_today ? `<span>${T("Einspeisung")} <b>${esc(fmtKWh(d.gridExportToday))}</b></span>` : "",
+      ].join("");
+      this._appSet("meters", meters);
+      if (h.temp) set("headerTemp", fmtTemp(num(hass, h.temp)));
+      if (h.humidity) { const v = num(hass, h.humidity); set("headerHumidity", v == null ? "–" : Math.round(v) + " %"); }
+      if (h.uv) { const v = num(hass, h.uv); set("headerUv", v == null ? "–" : "UV " + v.toFixed(1).replace(".", DEC)); }
+      if (h.weather) {
+        const ws = hass.states[h.weather];
+        set("headerWeather", ws ? (narrow ? "" : hass.formatEntityState(ws)) : "–");
+        const el = this.shadowRoot.getElementById("headerWeatherIcon");
+        const ic = ws ? (WEATHER_ICONS[ws.state] || "mdi:weather-cloudy") : "mdi:weather-cloudy";
+        if (el && el.getAttribute("icon") !== ic) el.setAttribute("icon", ic);
+      }
+
+      // scene layers
+      this._appSet("fx", appWeatherFx(wx, sc));
+      this._appSet("bats", appBatteriesSvg(d.batteries, sc.batteries));
+      const labels = this._appLabels(d, narrow, sc);
+      const pct = (v, i) => (v / APP_VB[i] * 100).toFixed(3) + "%";
+      this._appSet("leaders", labels.filter((L) => !L.free).map((L) =>
+        `<polyline points="${L.at[0]},${L.at[1]} ${L.x},${L.y}" fill="none" stroke="${wx.kind === "night" ? "#c2cddc" : "#8796aa"}" stroke-width="1" vector-effect="non-scaling-stroke"/>
+         <circle cx="${L.at[0]}" cy="${L.at[1]}" r="${narrow ? 5 : 3.3}" fill="#fff" stroke="${wx.kind === "night" ? "#c2cddc" : "#8796aa"}" stroke-width="1.4" vector-effect="non-scaling-stroke"/>`).join(""));
+      this._appSet("labels", labels.map((L) =>
+        `<div class="lbl ${L.side || ""}${L.below ? " below" : ""}${L.big ? " big" : ""}" style="left:${pct(L.x, 0)};top:${pct(L.y, 1)}" data-entity="${esc(L.entity || "")}">
+          <span class="box"><span class="n">${esc(L.n)}</span><span class="v">${esc(L.v)}<span class="chev">${APP_CHEV}</span></span>${
+          L.s ? `<span class="s ${L.sc || ""}">${esc(L.s)}</span>` : ""}</span></div>`).join(""));
+
+      // rows + consumer tiles
+      this._appSet("rows", this._appRows(d).map((r) =>
+        `<div class="row" data-entity="${esc(r.entity || "")}"><span class="ic"><ha-icon icon="${esc(r.icon)}"></ha-icon></span>
+          <span class="tx">${esc(r.title)}${r.sub ? `<small>${esc(r.sub)}</small>` : ""}</span>${r.val ? `<span class="val">${esc(r.val)}</span>` : ""}${APP_CHEV}</div>`).join(""));
+      const tiles = d.stackTiles.filter((t) => t.kind === "load" || d.climate.length === 0);
+      this._appSet("cons", tiles.map((t) => {
+        const img = resolveImage(t.image);
+        return `<div class="tile${t.active || t.unit && t.unit !== "W" ? "" : " idle"}" data-entity="${esc(t.entity || "")}">
+          <span class="im">${img ? `<img src="${esc(img)}" alt="">` : `<ha-icon icon="${esc(t.icon || "mdi:flash")}" style="color:${esc(inkify(t.color || "#4a7fd0", true))}"></ha-icon>`}</span>
+          <span class="tt">${esc(t.name || t.entity)}<b>${esc(t.text)}</b>${t.secondaryText ? `<small>${esc(t.secondaryText)}</small>` : ""}</span></div>`;
+      }).join(""));
+    },
+  };
+
   class GlassEnergyFlowCard extends HTMLElement {
     setConfig(config) {
       this._raw = config || {};
@@ -2151,6 +2671,7 @@ function step1Battery(x,y,w,h,b,compact) {
     }
 
     _build() {
+      if (this._config.theme.style === "app") return this._buildApp();
       const c = this._config;
       const h = c.header || {};
       const chip = (id, ic) => `<div class="status-chip"><ha-icon id="${id}Icon" icon="${ic}"></ha-icon><span id="${id}">–</span></div>`;
@@ -2301,6 +2822,7 @@ function step1Battery(x,y,w,h,b,compact) {
     _update() {
       const hass = this._hass;
       if (!hass || !this._built) return;
+      if (this._config.theme.style === "app") { LIGHT = true; this._updateApp(); return; }
       // Icon paths resolve asynchronously the first time each one is used;
       // this lets them ask for a single repaint once they arrive.
       REDRAW = () => {
@@ -2948,6 +3470,10 @@ function step1Battery(x,y,w,h,b,compact) {
       ] } } },
     ],
     theme: [
+      { name: "style", label: "Stil", selector: { select: { mode: "dropdown", options: [
+        { value: "glas", label: "Glas (Standard)" },
+        { value: "app", label: "App · Foto-Szene mit Wetter (Beta)" },
+      ] } } },
       { name: "mode", label: "Design", selector: { select: { mode: "dropdown", options: [
         { value: "dunkel", label: "Dunkel" },
         { value: "hell", label: "Hell" },
@@ -3003,6 +3529,11 @@ function step1Battery(x,y,w,h,b,compact) {
     ],
     solarItem: [
       { name: "entity", label: "Leistungssensor", selector: SEL.power },
+      { name: "building", label: "Gebäude (App-Stil)", selector: { select: { mode: "dropdown", options: [
+        { value: "house", label: "Wohnhaus" },
+        { value: "garage", label: "Garage" },
+        { value: "shed", label: "Gartenhaus" },
+      ] } } },
       { name: "energy_today", label: "Ertrag heute (Tageszähler)", selector: { entity: { domain: "sensor" } } },
       { name: "energy_today_unit", label: "Einheit, falls der Sensor noch keine meldet", selector: { select: { options: ["kWh", "Wh", "MWh"], mode: "dropdown" } } },
       { type: "grid", column_min_width: "220px", schema: [
@@ -3658,7 +4189,7 @@ function step1Battery(x,y,w,h,b,compact) {
             if (page.id === "theme" && v.mode && v.mode !== prev.mode
                 && v.preset === prev.preset) {
               const p = v.mode === "hell" ? "hell" : "blau";
-              n.theme = { preset: p, ...THEMES[p], wires: prev.wires || "puls" };
+              n.theme = { preset: p, ...THEMES[p], wires: prev.wires || "puls", ...(prev.style ? { style: prev.style } : {}) };
               return;
             }
             // Picking a preset should visibly change the colours, so its values
@@ -3666,7 +4197,7 @@ function step1Battery(x,y,w,h,b,compact) {
             if (page.id === "theme" && v.preset && v.preset !== prev.preset && THEMES[v.preset]) {
               // A preset only carries colours; the wire style is a separate
               // choice and must survive switching between schemes.
-              n.theme = { preset: v.preset, ...THEMES[v.preset], wires: prev.wires || "puls" };
+              n.theme = { preset: v.preset, ...THEMES[v.preset], wires: prev.wires || "puls", ...(prev.style ? { style: prev.style } : {}) };
               return;
             }
             n[page.id] = { ...prev, ...v };
@@ -3923,6 +4454,7 @@ function step1Battery(x,y,w,h,b,compact) {
     }
   }
 
+  Object.assign(GlassEnergyFlowCard.prototype, APP_METHODS);
   if (!customElements.get("glass-energy-flow-card")) customElements.define("glass-energy-flow-card", GlassEnergyFlowCard);
   if (!customElements.get("glass-energy-flow-card-editor")) customElements.define("glass-energy-flow-card-editor", GlassEnergyFlowCardEditor);
   window.customCards = window.customCards || [];

@@ -288,7 +288,7 @@ grid_options:
 | `keep_awake` | `off` (default), `fire_os` (Echo Show / Fire tablets only), `always` |
 | `header` | `real_import`, `real_export` (kWh), `temp`, `humidity`, `weather`, `uv` |
 | `pv` | `energy_today`, `forecast_today`, `forecast_remaining`, `forecast_tomorrow` |
-| `solar[]` | `name`, `entity` (W), `energy_today`, `icon`, `image`, `image_light` |
+| `solar[]` | `name`, `entity` (W), `energy_today`, `icon`, `image`, `image_light`, `building` (app style: `house`, `garage` or `shed`; arrays are summed per building) |
 | `batteries[]` | `name`, `soc` (%), `power` (W), `invert`, `icon`, `image`, `image_light`, `metrics[]` (`label`, `entity`, `unit`; up to 2, shown as extra lines in the tile, e.g. charged/discharged today) |
 | `grid` | `entity` (W), `invert`, `import_today`, `export_today`, `name`, `icon`, `image`, `image_light` |
 | `home` | `entity` (W), `icon`, `image`, `image_light` |
@@ -297,7 +297,14 @@ grid_options:
 | `consumers_auto_hide` | `true` (default): consumers that draw nothing (at or below their `threshold`, default 5 W) are hidden and their space goes to the rest; they come back as soon as they draw power and stay for a minute after they stop. `false` shows every consumer |
 | `consumers[]` | `name`, `entity`, `unit`, `icon`, `color`, `image`, `hidden`, `always_show` (never auto-hide this one), `threshold` (W), `secondary` (`entity`, `label`, `unit`) |
 | `layout` | `mode`: `auto` (default), `wide`, `mid`, `narrow`; breakpoints `wide_min` (1100 px), `mid_min` (680 px); `consumers`: `bottom` (default, rows under the house; a single row grows its tiles), `group` (framed in the right column) or `auto` (right column first); `climate`: `right` (default, below the vehicle) or `left` (above the grid). Unless `consumers` is `auto`, storage sits above the grid and both side columns share one width; `text_scale`: extra text size factor, e.g. `1.15` (key figures already grow automatically when the card is drawn small) |
-| `theme` | `preset`: `blau` (blue), `dunkel` (night blue), `mitternacht` (midnight), `petrol`, `violett` (violet), `grafit` (graphite), `hell` (light), `hell-blau` (light blue), `hell-violett` (light violet); `wires`: `puls` (pulse), `strich` (dashes), `ruhig` (static); fine-tune with `center`, `edge`, `spread`, `tile` |
+| `theme` | `preset`: `blau` (blue), `dunkel` (night blue), `mitternacht` (midnight), `petrol`, `violett` (violet), `grafit` (graphite), `hell` (light), `hell-blau` (light blue), `hell-violett` (light violet); `wires`: `puls` (pulse), `strich` (dashes), `ruhig` (static); fine-tune with `center`, `edge`, `spread`, `tile`; `style`: `glas` (default) or `app` (see below) |
+| `app` | only for `theme.style: app`: `weather`: `auto` (default, follows `header.weather`, `header.temp` and `sun.sun`), `off`, or a fixed `sunny`, `partly`, `cloudy`, `fog`, `rainy`, `snowy`, `night`, `frost`; `image`: your own scene picture (1024 × 568 layout); `anchors`: label anchor points for that picture (`pv_house`, `pv_garage`, `pv_shed`, `home`, `grid`, `car`, `climate`, each `[x, y]` in 1024 × 568 units) |
+
+### App style *(beta)*
+
+> Released as a beta (1.7.0-beta.x). In HACS, open the card, choose **Redownload** and switch on **Show beta versions** to get it. To go back, redownload 1.6.0 the same way; the glass style is unchanged either way, and `theme.style` simply falls back to glass on older versions.
+
+`theme: { style: app }` swaps the glass drawing for a light, app-like page: a photo of a house with a garage and a garden house, the live values pinned around it, compact rows below (PV forecast, storage, car, grid today, climate) and the consumers as tiles. Every configured battery stands as a cabinet in front of the garage (up to four, then "+n"), with a green LED showing its charge. The scene follows the weather: sun, clouds, rain, snow, frost at or below 0 °C, and a night view with lit windows. Assign each PV array to a building with `building` to get one label per building. Everything else (auto-hiding consumers, more-info on tap, the editor) works as in the glass style.
 
 ## Glass Energy Battery Card
 

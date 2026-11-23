@@ -302,7 +302,9 @@ grid_options:
 | `theme` | `preset`: `blau`, `dunkel`, `mitternacht`, `petrol`, `violett`, `grafit`, `hell`, `hell-blau`, `hell-violett`; `wires`: `puls`, `strich`, `ruhig`; Feinschliff mit `center`, `edge`, `spread`, `tile`; `style`: `glas` (Standard) oder `app` (siehe unten) |
 | `app` | nur für `theme.style: app`: `weather`: `auto` (Standard, folgt `header.weather`, `header.temp` und `sun.sun`), `off` oder fest `sunny`, `partly`, `cloudy`, `fog`, `rainy`, `snowy`, `night`, `frost`; `image`: eigenes Szenenbild (Aufteilung 1024 × 568); `anchors`: Ankerpunkte der Beschriftungen für dieses Bild (`pv_house`, `pv_garage`, `pv_shed`, `home`, `grid`, `car`, `climate`, jeweils `[x, y]` in 1024 × 568) |
 
-### App-Stil
+### App-Stil *(Beta)*
+
+> Erscheint als Beta (1.7.0-beta.x). In HACS die Karte öffnen, **Erneut herunterladen** wählen und **Beta-Versionen anzeigen** einschalten. Zurück geht es genauso mit Version 1.6.0; der Glas-Stil bleibt in beiden Fällen unverändert, und ältere Versionen ignorieren `theme.style` einfach.
 
 `theme: { style: app }` ersetzt die Glas-Zeichnung durch eine helle Ansicht im App-Stil: ein Foto von Wohnhaus, Garage und Gartenhaus, die Live-Werte mit dünnen Linien daran, darunter kompakte Zeilen (PV-Prognose, Speicher, E-Auto, Netz heute, Klima) und die Verbraucher als Kacheln. Jeder eingetragene Speicher steht als Schrank vor der Garage (bis zu vier, danach „+n“), eine grüne LED zeigt den Ladestand. Die Szene folgt dem Wetter: Sonne, Wolken, Regen, Schnee, Frost ab 0 °C und eine Nachtansicht mit beleuchteten Fenstern. Mit `building` ordnest du jede PV-Anlage einem Gebäude zu und bekommst je Gebäude eine Beschriftung. Alles andere (ausgeblendete Verbraucher, Details per Tippen, der Editor) funktioniert wie im Glas-Stil.
 

@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.6.0";
+  const CARD_VERSION = "1.7.0-beta.1";
 
   // ------------------------------------------------------------------ i18n
   // The UI follows Home Assistant's language: German for "de", English
@@ -206,7 +206,7 @@
     "Tipp: Steckdosen-Sensoren heißen meist „sensor.steckdose_…_power“.": "Tip: smart plug sensors are usually named “sensor.…_power”.",
     "Stil": "Style",
     "Glas (Standard)": "Glass (default)",
-    "App · Foto-Szene mit Wetter": "App · photo scene with weather",
+    "App · Foto-Szene mit Wetter (Beta)": "App · photo scene with weather (beta)",
     "Gebäude (App-Stil)": "Building (app style)",
     "Wohnhaus": "House",
     "Garage": "Garage",
@@ -3472,7 +3472,7 @@ function step1Battery(x,y,w,h,b,compact) {
     theme: [
       { name: "style", label: "Stil", selector: { select: { mode: "dropdown", options: [
         { value: "glas", label: "Glas (Standard)" },
-        { value: "app", label: "App · Foto-Szene mit Wetter" },
+        { value: "app", label: "App · Foto-Szene mit Wetter (Beta)" },
       ] } } },
       { name: "mode", label: "Design", selector: { select: { mode: "dropdown", options: [
         { value: "dunkel", label: "Dunkel" },

@@ -300,7 +300,9 @@ grid_options:
 | `theme` | `preset`: `blau` (blue), `dunkel` (night blue), `mitternacht` (midnight), `petrol`, `violett` (violet), `grafit` (graphite), `hell` (light), `hell-blau` (light blue), `hell-violett` (light violet); `wires`: `puls` (pulse), `strich` (dashes), `ruhig` (static); fine-tune with `center`, `edge`, `spread`, `tile`; `style`: `glas` (default) or `app` (see below) |
 | `app` | only for `theme.style: app`: `weather`: `auto` (default, follows `header.weather`, `header.temp` and `sun.sun`), `off`, or a fixed `sunny`, `partly`, `cloudy`, `fog`, `rainy`, `snowy`, `night`, `frost`; `image`: your own scene picture (1024 × 568 layout); `anchors`: label anchor points for that picture (`pv_house`, `pv_garage`, `pv_shed`, `home`, `grid`, `car`, `climate`, each `[x, y]` in 1024 × 568 units) |
 
-### App style
+### App style *(beta)*
+
+> Released as a beta (1.7.0-beta.x). In HACS, open the card, choose **Redownload** and switch on **Show beta versions** to get it. To go back, redownload 1.6.0 the same way; the glass style is unchanged either way, and `theme.style` simply falls back to glass on older versions.
 
 `theme: { style: app }` swaps the glass drawing for a light, app-like page: a photo of a house with a garage and a garden house, the live values pinned around it, compact rows below (PV forecast, storage, car, grid today, climate) and the consumers as tiles. Every configured battery stands as a cabinet in front of the garage (up to four, then "+n"), with a green LED showing its charge. The scene follows the weather: sun, clouds, rain, snow, frost at or below 0 °C, and a night view with lit windows. Assign each PV array to a building with `building` to get one label per building. Everything else (auto-hiding consumers, more-info on tap, the editor) works as in the glass style.
 

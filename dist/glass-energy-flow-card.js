@@ -215,6 +215,7 @@
     "verbunden": "plugged in",
     "voll in": "full in",
     "PV-Prognose": "PV forecast",
+    "PV gesamt": "PV total",
     "PV-Ertrag": "PV yield",
     "Netz heute": "Grid today",
     "Bezug": "Import",
@@ -2060,9 +2061,10 @@ function step1Battery(x,y,w,h,b,compact) {
   // its anchor.
   const APP_SPOTS = {
     wide: {
+      pv_total: { x: 28, y: 52, side: "r", below: 1, free: 1 },
       pv_house: { x: 508, y: 70 }, pv_garage: { x: 745, y: 255, side: "r" }, pv_shed: { x: 866, y: 135 },
       home: { x: 655, y: 95, side: "r" }, grid: { x: 1012, y: 420, side: "l", below: 1 },
-      climate: { x: 230, y: 175, side: "l" }, car: { x: 330, y: 500, side: "l", below: 1 },
+      climate: { x: 250, y: 215, side: "l" }, car: { x: 330, y: 500, side: "l", below: 1 },
       bat0: { x: 690, y: 478, side: "l", below: 1 }, bat1: { x: 790, y: 478, side: "r", below: 1 },
       bats: { x: 790, y: 478, side: "r", below: 1 },
     },
@@ -2213,10 +2215,15 @@ function step1Battery(x,y,w,h,b,compact) {
     .lbl .v { display:inline-flex; align-items:center; gap:6px; font-size:clamp(15px, 1.4cqw, 21px); font-weight:700; letter-spacing:-.01em; }
     .lbl .s { display:block; font-size:clamp(10.5px, 0.86cqw, 12.5px); color:var(--soft); margin-top:1px; }
     .s.g { color:var(--prod); font-weight:600; } .s.o { color:var(--disch); font-weight:600; } .s.b { color:var(--gridc); font-weight:600; }
+    .lbl.big .box { padding:8px 14px 9px; border-radius:18px; background:rgba(255,255,255,.78); }
+    .lbl.big .n { font-weight:600; letter-spacing:.02em; }
+    .lbl.big .v { font-size:clamp(20px, 2.1cqw, 32px); }
+    .lbl.big .v::before { content:""; width:.62em; height:.62em; border-radius:50%; flex:none;
+      background:radial-gradient(circle, #ffd56b 0 45%, rgba(255,190,60,.35) 46% 70%, transparent 72%); }
     .chev { width:17px; height:17px; border-radius:50%; background:rgba(255,255,255,.88); display:inline-flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(20,40,70,.14); flex:none; }
     .chev svg { width:13px; height:13px; fill:#6b7a8f; }
     .narrow .chev { width:14px; height:14px; } .narrow .box { padding:3px 7px 4px; border-radius:10px; }
-    .rows { display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:12px; position:relative; z-index:6; margin-top:6px; }
+    .rows { display:grid; grid-template-columns:repeat(auto-fit, minmax(330px, 1fr)); gap:12px; position:relative; z-index:6; margin-top:6px; }
     .narrow .rows { grid-template-columns:1fr; gap:0; background:rgba(255,255,255,.88); border-radius:20px; padding:4px 14px; box-shadow:0 8px 28px rgba(30,60,100,.07); }
     .row { display:flex; align-items:center; gap:10px; background:rgba(255,255,255,.88); border-radius:20px; padding:12px 14px;
       box-shadow:0 8px 28px rgba(30,60,100,.07), 0 1px 2px rgba(30,60,100,.05); cursor:pointer; min-width:0; }
@@ -2374,6 +2381,10 @@ function step1Battery(x,y,w,h,b,compact) {
         if (!narrow && Object.keys(byB).length) {
           const unplaced = d.solar.filter((s) => !s.building || !APP_BUILDINGS[s.building]);
           if (unplaced.length) byB.house = (byB.house || []).concat(unplaced);
+          add("pv_total", [0, 0], {
+            n: T("PV gesamt"), v: fmtW(d.pvTotal), big: 1, entity: d.pvEnergy.entity || d.solar[0].entity,
+            s: d.pvEnergy.entity ? `${T("Heute")} ${fmtPvEnergy(d.pvEnergy.value)}` : null, sc: "o",
+          });
           Object.entries(byB).forEach(([b, arr]) => add("pv_" + b, A["pv_" + b], {
             n: `${T("Solar")} ${T(APP_BUILDINGS[b])}`, v: night(sum(arr)),
             s: arr.length > 1 ? arr.map((s) => `${s.name || ""} ${fmtW(s.value).replace(/ (k?W)$/, "")}`.trim()).join(" · ") : null,
@@ -2506,11 +2517,11 @@ function step1Battery(x,y,w,h,b,compact) {
       this._appSet("bats", appBatteriesSvg(d.batteries, sc.batteries));
       const labels = this._appLabels(d, narrow, sc);
       const pct = (v, i) => (v / APP_VB[i] * 100).toFixed(3) + "%";
-      this._appSet("leaders", labels.map((L) =>
+      this._appSet("leaders", labels.filter((L) => !L.free).map((L) =>
         `<polyline points="${L.at[0]},${L.at[1]} ${L.x},${L.y}" fill="none" stroke="${wx.kind === "night" ? "#c2cddc" : "#8796aa"}" stroke-width="1" vector-effect="non-scaling-stroke"/>
          <circle cx="${L.at[0]}" cy="${L.at[1]}" r="${narrow ? 5 : 3.3}" fill="#fff" stroke="${wx.kind === "night" ? "#c2cddc" : "#8796aa"}" stroke-width="1.4" vector-effect="non-scaling-stroke"/>`).join(""));
       this._appSet("labels", labels.map((L) =>
-        `<div class="lbl ${L.side || ""}${L.below ? " below" : ""}" style="left:${pct(L.x, 0)};top:${pct(L.y, 1)}" data-entity="${esc(L.entity || "")}">
+        `<div class="lbl ${L.side || ""}${L.below ? " below" : ""}${L.big ? " big" : ""}" style="left:${pct(L.x, 0)};top:${pct(L.y, 1)}" data-entity="${esc(L.entity || "")}">
           <span class="box"><span class="n">${esc(L.n)}</span><span class="v">${esc(L.v)}<span class="chev">${APP_CHEV}</span></span>${
           L.s ? `<span class="s ${L.sc || ""}">${esc(L.s)}</span>` : ""}</span></div>`).join(""));
 

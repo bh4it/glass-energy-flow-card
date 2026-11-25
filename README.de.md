@@ -290,7 +290,7 @@ grid_options:
 | `keep_awake` | `off` (Standard), `fire_os` (nur Echo Show / Fire-Tablets), `always` |
 | `header` | `real_import`, `real_export` (kWh), `temp`, `humidity`, `weather`, `uv` |
 | `pv` | `energy_today`, `forecast_today`, `forecast_remaining`, `forecast_tomorrow` |
-| `solar[]` | `name`, `entity` (W), `energy_today`, `icon`, `image`, `image_light`, `building` (App-Stil: `house`, `garage` oder `shed`; Anlagen werden je Gebäude summiert) |
+| `solar[]` | `name`, `entity` (W), `energy_today`, `icon`, `image`, `image_light`, `building` (App-Stil: `house`, `balcony`, `garage` oder `shed`; Anlagen werden je Gebäude summiert) |
 | `batteries[]` | `name`, `soc` (%), `power` (W), `invert`, `icon`, `image`, `image_light`, `metrics[]` (`label`, `entity`, `unit`; bis zu 2, als Zusatzzeilen in der Kachel, z. B. Aufladung/Entladung heute) |
 | `grid` | `entity` (W), `invert`, `import_today`, `export_today`, `name`, `icon`, `image`, `image_light` |
 | `home` | `entity` (W), `icon`, `image`, `image_light` |

@@ -209,6 +209,7 @@
     "App · Foto-Szene mit Wetter (Beta)": "App · photo scene with weather (beta)",
     "Gebäude (App-Stil)": "Building (app style)",
     "Wohnhaus": "House",
+    "Balkon": "Balcony",
     "Garage": "Garage",
     "Gartenhaus": "Garden house",
     "Solar": "Solar",
@@ -2046,7 +2047,7 @@ function step1Battery(x,y,w,h,b,compact) {
   const APP_SCENE = {
     image: "scene-house.jpg",
     anchors: {
-      pv_house: [505, 210], pv_garage: [690, 360], pv_shed: [866, 238],
+      pv_house: [505, 210], pv_balcony: [400, 322], pv_garage: [690, 360], pv_shed: [866, 238],
       home: [645, 235], grid: [972, 300], car: [470, 470], climate: [410, 255],
     },
     // Battery cabinets stand in a row in front of the garage side wall: the
@@ -2055,16 +2056,16 @@ function step1Battery(x,y,w,h,b,compact) {
     // Lit windows for the night view, in percent of the scene.
     windows: [[37, 40, 7], [48, 48, 6], [37, 59, 6], [47, 65, 5], [56, 74, 3]],
   };
-  const APP_BUILDINGS = { house: "Wohnhaus", garage: "Garage", shed: "Gartenhaus" };
+  const APP_BUILDINGS = { house: "Wohnhaus", balcony: "Balkon", garage: "Garage", shed: "Gartenhaus" };
   // Where each label sits on a wide card and on a phone. x/y are the label
   // position in scene units, side is the text alignment, below flips it under
   // its anchor.
   const APP_SPOTS = {
     wide: {
-      pv_total: { x: 28, y: 52, side: "r", below: 1, free: 1 },
-      pv_house: { x: 508, y: 70 }, pv_all: { x: 520, y: 150 }, pv_garage: { x: 745, y: 255, side: "r" }, pv_shed: { x: 866, y: 135 },
-      home: { x: 655, y: 95, side: "r" }, grid: { x: 1012, y: 420, side: "l", below: 1 },
-      climate: { x: 250, y: 215, side: "l" }, car: { x: 330, y: 500, side: "l", below: 1 },
+      pv_house: { x: 335, y: 150, side: "l" }, pv_all: { x: 500, y: 150, side: "l" }, pv_garage: { x: 745, y: 255, side: "r" }, pv_shed: { x: 866, y: 135 },
+      home: { x: 655, y: 112, side: "l" }, grid: { x: 1012, y: 420, side: "l", below: 1 },
+      pv_balcony: { x: 245, y: 352, side: "l" },
+      climate: { x: 225, y: 238, side: "l" }, car: { x: 330, y: 500, side: "l", below: 1 },
       bat0: { x: 690, y: 478, side: "l", below: 1 }, bat1: { x: 790, y: 478, side: "r", below: 1 },
       bats: { x: 790, y: 478, side: "r", below: 1 },
     },
@@ -2244,6 +2245,18 @@ function step1Battery(x,y,w,h,b,compact) {
     .tile .tt small { display:block; font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .tile.idle { opacity:.6; }
     .lbl .s + .s { margin-top:0; }
+    /* PV total under the title when every array has its own label at the producer */
+    .tl { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+    .pvsum { display:inline-flex; align-items:center; gap:10px; padding:4px 14px 5px 10px; margin:-4px 0; border-radius:16px;
+      background:rgba(255,255,255,.74); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+      box-shadow:0 2px 10px rgba(30,60,100,.08); cursor:pointer; white-space:nowrap; }
+    .pvsum:empty { display:none; }
+    .pvsum::before { content:""; width:20px; height:20px; border-radius:50%; flex:none;
+      background:radial-gradient(circle, #ffd56b 0 45%, rgba(255,190,60,.35) 46% 70%, transparent 72%); }
+    .pvsum .n { font-size:13px; color:var(--soft); font-weight:600; }
+    .pvsum b { font-size:clamp(19px, 1.9cqw, 26px); font-weight:700; letter-spacing:-.01em; }
+    .pvsum .s { font-size:13.5px; color:var(--prod); font-weight:600; }
+    .w-night .pvsum { background:rgba(12,20,38,.55); box-shadow:none; }
 
     /* Landscape: when the card has to fit a wide, short space (a wall tablet,
        a panel view), the scene sits on the left at the height that is left,
@@ -2337,7 +2350,7 @@ function step1Battery(x,y,w,h,b,compact) {
       this.shadowRoot.innerHTML = `<style>${APP_CSS}</style>
         <div class="app" id="app">
           <div class="hdr">
-            <div><div class="t">${esc(c.title || T("Energie"))}</div><div class="meters" id="meters"></div></div>
+            <div><div class="tl"><div class="t">${esc(c.title || T("Energie"))}</div><div class="pvsum" id="pvsum"></div></div><div class="meters" id="meters"></div></div>
             <div class="chips">${[
               h.temp ? chip("headerTemp", "mdi:thermometer") : "",
               h.humidity ? chip("headerHumidity", "mdi:water-percent", 1) : "",
@@ -2393,15 +2406,18 @@ function step1Battery(x,y,w,h,b,compact) {
         if (!narrow && Object.keys(byB).length) {
           const unplaced = d.solar.filter((s) => !s.building || !APP_BUILDINGS[s.building]);
           if (unplaced.length) byB.house = (byB.house || []).concat(unplaced);
-          add("pv_total", [0, 0], {
-            n: T("PV gesamt"), v: fmtW(d.pvTotal), big: 1, entity: d.pvEnergy.entity || d.solar[0].entity,
-            s: d.pvEnergy.entity ? `${T("Heute")} ${fmtPvEnergy(d.pvEnergy.value)}` : null, sc: "o",
+          // One array on a building: its own name and today's yield, like the
+          // glass style shows it at the producer. Several: the list of arrays.
+          Object.entries(byB).forEach(([b, arr]) => {
+            const one = arr.length === 1 ? arr[0] : null;
+            const today = arr.some((s) => s.energy_today) ? arr.reduce((a, s) => a + (s.energyToday || 0), 0) : null;
+            add("pv_" + b, A["pv_" + b], {
+              n: one && one.name ? `PV ${one.name}` : `${T("Solar")} ${T(APP_BUILDINGS[b])}`, v: night(sum(arr)),
+              s: arr.length > 1 ? arr.map((s) => `${s.name || ""} ${fmtW(s.value).replace(/ (k?W)$/, "")}`.trim()).join(" · ") : null,
+              s2: today != null ? `${T("Heute")} ${fmtPvEnergy(today)}` : null, sc2: "g",
+              entity: arr[0].entity,
+            });
           });
-          Object.entries(byB).forEach(([b, arr]) => add("pv_" + b, A["pv_" + b], {
-            n: `${T("Solar")} ${T(APP_BUILDINGS[b])}`, v: night(sum(arr)),
-            s: arr.length > 1 ? arr.map((s) => `${s.name || ""} ${fmtW(s.value).replace(/ (k?W)$/, "")}`.trim()).join(" · ") : null,
-            entity: arr[0].entity,
-          }));
         } else {
           add(S.pv_all ? "pv_all" : "pv_house", A.pv_house, {
             n: d.solar.length > 1 ? T("PV gesamt") : T("Solar"), v: fmtW(d.pvTotal), entity: d.pvEnergy.entity || d.solar[0].entity,
@@ -2515,6 +2531,12 @@ function step1Battery(x,y,w,h,b,compact) {
           c.grid.export_today ? `<span>${T("Einspeisung")} <b>${esc(fmtKWh(d.gridExportToday))}</b></span>` : "",
       ].join("");
       this._appSet("meters", meters);
+      // PV total under the title once the arrays are labelled at their buildings
+      const placed = !narrow && d.solar.some((s) => s.building && APP_BUILDINGS[s.building]);
+      this._appSet("pvsum", placed ? `<span class="n">${esc(T("PV gesamt"))}</span><b>${esc(fmtW(d.pvTotal))}</b>${
+        d.pvEnergy.entity ? `<span class="s">${esc(T("Heute"))} ${esc(fmtPvEnergy(d.pvEnergy.value))}</span>` : ""}` : "");
+      const pvs = this.shadowRoot.getElementById("pvsum");
+      if (pvs) pvs.dataset.entity = placed ? (d.pvEnergy.entity || d.solar[0].entity || "") : "";
       if (h.temp) set("headerTemp", fmtTemp(num(hass, h.temp)));
       if (h.humidity) { const v = num(hass, h.humidity); set("headerHumidity", v == null ? "–" : Math.round(v) + " %"); }
       if (h.uv) { const v = num(hass, h.uv); set("headerUv", v == null ? "–" : "UV " + v.toFixed(1).replace(".", DEC)); }
@@ -3567,6 +3589,7 @@ function step1Battery(x,y,w,h,b,compact) {
       { name: "entity", label: "Leistungssensor", selector: SEL.power },
       { name: "building", label: "Gebäude (App-Stil)", selector: { select: { mode: "dropdown", options: [
         { value: "house", label: "Wohnhaus" },
+        { value: "balcony", label: "Balkon" },
         { value: "garage", label: "Garage" },
         { value: "shed", label: "Gartenhaus" },
       ] } } },

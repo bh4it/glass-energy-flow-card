@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.7.0-beta.1";
+  const CARD_VERSION = "1.7.0-beta.2";
 
   // ------------------------------------------------------------------ i18n
   // The UI follows Home Assistant's language: German for "de", English
@@ -2062,7 +2062,7 @@ function step1Battery(x,y,w,h,b,compact) {
   const APP_SPOTS = {
     wide: {
       pv_total: { x: 28, y: 52, side: "r", below: 1, free: 1 },
-      pv_house: { x: 508, y: 70 }, pv_garage: { x: 745, y: 255, side: "r" }, pv_shed: { x: 866, y: 135 },
+      pv_house: { x: 508, y: 70 }, pv_all: { x: 520, y: 150 }, pv_garage: { x: 745, y: 255, side: "r" }, pv_shed: { x: 866, y: 135 },
       home: { x: 655, y: 95, side: "r" }, grid: { x: 1012, y: 420, side: "l", below: 1 },
       climate: { x: 250, y: 215, side: "l" }, car: { x: 330, y: 500, side: "l", below: 1 },
       bat0: { x: 690, y: 478, side: "l", below: 1 }, bat1: { x: 790, y: 478, side: "r", below: 1 },
@@ -2243,6 +2243,18 @@ function step1Battery(x,y,w,h,b,compact) {
     .tile .tt { font-size:13px; color:var(--soft); min-width:0; } .tile .tt b { display:block; color:var(--ink); font-size:16px; margin-top:1px; }
     .tile .tt small { display:block; font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .tile.idle { opacity:.6; }
+    .lbl .s + .s { margin-top:0; }
+
+    /* Landscape: when the card has to fit a wide, short space (a wall tablet,
+       a panel view), the scene sits on the left at the height that is left,
+       the summary rows stack beside it and the consumer tiles run below. */
+    .app.land { display:grid; grid-template-columns:var(--sw, 62%) minmax(0, 1fr); column-gap:16px;
+      grid-template-areas:"hdr hdr" "scene rows" "cons cons"; align-items:start; }
+    .land .hdr { grid-area:hdr; } .land .scene { grid-area:scene; margin:-26px 0 0 -18px; }
+    .land .rows { grid-area:rows; grid-template-columns:1fr; gap:9px; margin-top:0; align-self:center; }
+    .land .row { padding:11px 14px; } .land .row .tx { font-size:16px; } .land .row .val { font-size:16px; }
+    .land .cons { grid-area:cons; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; margin-top:10px; }
+    .land .tile { padding:9px 11px; }
 
     /* weather moods */
     .w-sunny .photo, .w-sunny .over { filter:saturate(1.08) brightness(1.03); }
@@ -2391,10 +2403,12 @@ function step1Battery(x,y,w,h,b,compact) {
             entity: arr[0].entity,
           }));
         } else {
-          add("pv_house", A.pv_house, {
-            n: T("Solar"), v: fmtW(d.pvTotal), entity: d.solar[0].entity,
+          add(S.pv_all ? "pv_all" : "pv_house", A.pv_house, {
+            n: d.solar.length > 1 ? T("PV gesamt") : T("Solar"), v: fmtW(d.pvTotal), entity: d.pvEnergy.entity || d.solar[0].entity,
+            big: narrow ? 0 : 1,
             s: !narrow && d.solar.length > 1 && d.solar.length <= 4
               ? d.solar.map((s) => `${s.name || ""} ${fmtW(s.value).replace(/ (k?W)$/, "")}`.trim()).join(" · ") : null,
+            s2: !narrow && d.pvEnergy.entity ? `${T("Heute")} ${fmtPvEnergy(d.pvEnergy.value)}` : null, sc2: "g",
           });
         }
       }
@@ -2523,7 +2537,8 @@ function step1Battery(x,y,w,h,b,compact) {
       this._appSet("labels", labels.map((L) =>
         `<div class="lbl ${L.side || ""}${L.below ? " below" : ""}${L.big ? " big" : ""}" style="left:${pct(L.x, 0)};top:${pct(L.y, 1)}" data-entity="${esc(L.entity || "")}">
           <span class="box"><span class="n">${esc(L.n)}</span><span class="v">${esc(L.v)}<span class="chev">${APP_CHEV}</span></span>${
-          L.s ? `<span class="s ${L.sc || ""}">${esc(L.s)}</span>` : ""}</span></div>`).join(""));
+          L.s ? `<span class="s ${L.sc || ""}">${esc(L.s)}</span>` : ""}${
+          L.s2 ? `<span class="s ${L.sc2 || ""}">${esc(L.s2)}</span>` : ""}</span></div>`).join(""));
 
       // rows + consumer tiles
       this._appSet("rows", this._appRows(d).map((r) =>
@@ -2536,6 +2551,27 @@ function step1Battery(x,y,w,h,b,compact) {
           <span class="im">${img ? `<img src="${esc(img)}" alt="">` : `<ha-icon icon="${esc(t.icon || "mdi:flash")}" style="color:${esc(inkify(t.color || "#4a7fd0", true))}"></ha-icon>`}</span>
           <span class="tt">${esc(t.name || t.entity)}<b>${esc(t.text)}</b>${t.secondaryText ? `<small>${esc(t.secondaryText)}</small>` : ""}</span></div>`;
       }).join(""));
+      this._appFit(root, w, narrow);
+    },
+
+    /**
+     * Landscape layout for a wide, short space: the scene gets the height that
+     * header and consumer tiles leave over, and its width follows from the
+     * photo's aspect ratio. The summary rows take the rest of the width.
+     */
+    _appFit(root, w, narrow) {
+      const avail = narrow ? 0 : this._availHeight();
+      const land = avail > 0 && w >= 900 && w / avail > 1.45;
+      root.classList.toggle("land", land);
+      if (!land) { root.style.removeProperty("--sw"); return; }
+      const hdr = root.querySelector(".hdr"), cons = this.shadowRoot.getElementById("cons");
+      const pad = 34, overlap = 26, hdrH = hdr ? hdr.offsetHeight : 40;
+      const consH = cons && cons.children.length ? cons.offsetHeight + 10 : 0;
+      const inner = w - 36;
+      const sceneH = avail - pad - hdrH + overlap - consH;
+      const sw = Math.round(clamp(sceneH * APP_VB[0] / APP_VB[1], inner * 0.5, inner * 0.7));
+      const v = sw - 18 + "px";        // the scene bleeds 18 px into the left padding
+      if (root.style.getPropertyValue("--sw") !== v) root.style.setProperty("--sw", v);
     },
   };
 

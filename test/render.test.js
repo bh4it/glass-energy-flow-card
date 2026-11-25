@@ -309,3 +309,31 @@ for (const L of APP_WEATHER) {
     }
   });
 }
+
+test("app style uses the side layout on a landscape screen with a fixed height", async () => {
+  const config = { ...APP, layout: { fit_height: "always" } };
+  const { page, errors } = await mount({ width: 1280, height: 800, config });
+  try {
+    await page.waitForFunction((t) => {
+      const r = document.querySelector(t)?.shadowRoot;
+      const img = r && r.querySelector(".photo");
+      return img && img.complete && img.naturalWidth > 0 && r.querySelectorAll(".lbl").length;
+    }, card, { timeout: 10_000 });
+    await page.waitForTimeout(300);
+    const info = await page.evaluate((t) => {
+      const el = document.querySelector(t), r = el.shadowRoot, app = r.getElementById("app");
+      const scene = r.querySelector(".scene").getBoundingClientRect(), aside = r.getElementById("aside").getBoundingClientRect();
+      return { cls: app.className, h: app.getBoundingClientRect().height, sideBySide: aside.left >= scene.right - 1,
+        rows: r.querySelectorAll(".row").length, bad: /NaN|undefined/.test(r.innerHTML) };
+    }, card);
+    await page.screenshot({ path: join(OUT, "app-side.png") });
+    assert.match(info.cls, /\bside\b/, "side layout is picked");
+    assert.ok(info.sideBySide, "rows sit right of the scene");
+    assert.ok(info.h <= 800, `card fits the screen height, got ${info.h}`);
+    assert.ok(info.rows >= 3, "rows are shown");
+    assert.equal(info.bad, false, "no NaN/undefined leaks");
+    assert.deepEqual(errors, [], "no page errors");
+  } finally {
+    await page.close();
+  }
+});

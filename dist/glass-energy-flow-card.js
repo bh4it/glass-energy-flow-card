@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.7.0-beta.1";
+  const CARD_VERSION = "1.7.0-beta.2";
 
   // ------------------------------------------------------------------ i18n
   // The UI follows Home Assistant's language: German for "de", English
@@ -2237,6 +2237,25 @@ function step1Battery(x,y,w,h,b,compact) {
     .row .val { font-weight:700; white-space:nowrap; } .row > svg { width:18px; height:18px; fill:#9aa7b8; flex:none; }
     .cons { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-top:12px; position:relative; z-index:6; }
     .narrow .cons { grid-template-columns:1fr 1fr; }
+    .app.side { display:grid; grid-template-columns:var(--scw, 68%) minmax(0, 1fr); grid-template-rows:auto minmax(0, 1fr); column-gap:16px; box-sizing:border-box; }
+    .side .hdr { grid-column:1 / -1; }
+    .side .scene { grid-column:1; grid-row:2; margin:4px 0 0 -6px; align-self:center; container-type:inline-size; }
+    .side .lbl .n, .side .lbl .s { font-size:clamp(9.5px, 1.3cqw, 13px); } .side .lbl .v { font-size:clamp(12.5px, 2cqw, 21px); gap:4px; }
+    .side .box { padding:4px 8px 5px; border-radius:12px; } .side .chev { width:14px; height:14px; }
+    .hero { display:none; }
+    .side .hero { display:block; margin-bottom:8px; }
+    .hc { background:rgba(255,255,255,.88); border-radius:18px; padding:10px 14px 11px; box-shadow:0 8px 28px rgba(30,60,100,.07); cursor:pointer; }
+    .hc .n { display:block; font-size:13px; font-weight:600; color:var(--soft); }
+    .hc .v { display:inline-flex; align-items:center; gap:8px; font-size:clamp(24px, 2.6cqw, 34px); font-weight:700; letter-spacing:-.01em; }
+    .hc .v::before { content:""; width:.6em; height:.6em; border-radius:50%; background:radial-gradient(circle, #ffd56b 0 45%, rgba(255,190,60,.35) 46% 70%, transparent 72%); }
+    .hc .s { display:block; font-size:13px; color:var(--disch); font-weight:600; }
+    .w-night .hc { background:rgba(255,255,255,.08); box-shadow:none; }
+    .side .aside { grid-column:2; grid-row:2; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:10px 2px 2px; scrollbar-width:none; align-self:start; max-height:100%; box-sizing:border-box; }
+    .side .aside::-webkit-scrollbar { display:none; }
+    .side .rows { grid-template-columns:1fr; gap:8px; margin-top:0; }
+    .side .row { padding:10px 12px; border-radius:16px; }
+    .side .cons { grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; margin-top:8px; }
+    .side .tile { padding:9px 10px; border-radius:14px; }
     .tile { background:rgba(255,255,255,.88); border-radius:18px; padding:12px; display:flex; align-items:center; gap:10px; box-shadow:0 6px 20px rgba(30,60,100,.06); cursor:pointer; min-width:0; }
     .tile .im { width:40px; height:40px; border-radius:12px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; flex:none; }
     .tile .im img { width:36px; height:36px; object-fit:contain; } .tile .im ha-icon { --mdc-icon-size:22px; }
@@ -2345,8 +2364,11 @@ function step1Battery(x,y,w,h,b,compact) {
             <svg class="leaders" id="leaders" viewBox="0 0 ${APP_VB[0]} ${APP_VB[1]}"></svg>
             <div class="labels" id="labels"></div>
           </div>
-          <div class="rows" id="rows"></div>
-          <div class="cons" id="cons"></div>
+          <div class="aside" id="aside">
+            <div class="hero" id="hero"></div>
+            <div class="rows" id="rows"></div>
+            <div class="cons" id="cons"></div>
+          </div>
         </div>`;
       const root = this.shadowRoot.getElementById("app");
       root.addEventListener("click", (ev) => {
@@ -2391,10 +2413,12 @@ function step1Battery(x,y,w,h,b,compact) {
             entity: arr[0].entity,
           }));
         } else {
+          const today = d.pvEnergy.entity ? `${T("Heute")} ${fmtPvEnergy(d.pvEnergy.value)}` : null;
           add("pv_house", A.pv_house, {
-            n: T("Solar"), v: fmtW(d.pvTotal), entity: d.solar[0].entity,
+            n: d.solar.length > 1 ? T("PV gesamt") : T("Solar"), v: fmtW(d.pvTotal), entity: d.pvEnergy.entity || d.solar[0].entity,
             s: !narrow && d.solar.length > 1 && d.solar.length <= 4
-              ? d.solar.map((s) => `${s.name || ""} ${fmtW(s.value).replace(/ (k?W)$/, "")}`.trim()).join(" · ") : null,
+              ? d.solar.map((s) => `${s.name || ""} ${fmtW(s.value).replace(/ (k?W)$/, "")}`.trim()).join(" · ") : today,
+            sc: narrow ? "o" : "",
           });
         }
       }
@@ -2489,7 +2513,25 @@ function step1Battery(x,y,w,h,b,compact) {
       const narrow = w > 0 && w < 600;
       const sc = this._appScene();
       const wx = appWeather(hass, c);
-      root.className = `app w-${wx.kind}${wx.frost ? " frost" : ""}${narrow ? " narrow" : ""}`;
+      // Side layout: scene left, rows on the right. Used on landscape screens
+      // that give the card a fixed height (panel view, e.g. an Echo Show), where
+      // the stacked layout would push the rows off screen, or when asked for.
+      const lay = (c.app && c.app.layout) || "auto";
+      const avail = narrow ? 0 : this._availHeight();
+      const side = !narrow && w >= 760 && (lay === "side" || (lay === "auto" && avail > 0 && w / avail >= 1.2));
+      root.className = `app w-${wx.kind}${wx.frost ? " frost" : ""}${narrow ? " narrow" : ""}${side ? " side" : ""}`;
+      if (side) {
+        const hdr = this.shadowRoot.querySelector(".hdr");
+        const hh = hdr ? hdr.offsetHeight : 60;
+        const asideMin = Math.max(300, Math.min(420, w * 0.27));
+        let scw = w - 36 - 16 - asideMin;
+        if (avail > 0) scw = Math.min(scw, Math.round((avail - hh - 34) * APP_VB[0] / APP_VB[1]));
+        root.style.setProperty("--scw", Math.max(320, scw) + "px");
+        root.style.height = avail > 0 ? avail + "px" : "";
+      } else {
+        root.style.removeProperty("--scw");
+        root.style.height = "";
+      }
 
       // header
       const h = c.header || {};
@@ -2515,7 +2557,13 @@ function step1Battery(x,y,w,h,b,compact) {
       // scene layers
       this._appSet("fx", appWeatherFx(wx, sc));
       this._appSet("bats", appBatteriesSvg(d.batteries, sc.batteries));
-      const labels = this._appLabels(d, narrow, sc);
+      let labels = this._appLabels(d, narrow, sc);
+      // In the side layout the PV total leads the right column instead of
+      // covering the scene, which is smaller there.
+      const tot = side && labels.find((L) => L.key === "pv_total");
+      if (tot) labels = labels.filter((L) => L !== tot);
+      this._appSet("hero", tot ? `<div class="hc" data-entity="${esc(tot.entity || "")}"><span class="n">${esc(tot.n)}</span>
+          <span class="v">${esc(tot.v)}<span class="chev">${APP_CHEV}</span></span>${tot.s ? `<span class="s o">${esc(tot.s)}</span>` : ""}</div>` : "");
       const pct = (v, i) => (v / APP_VB[i] * 100).toFixed(3) + "%";
       this._appSet("leaders", labels.filter((L) => !L.free).map((L) =>
         `<polyline points="${L.at[0]},${L.at[1]} ${L.x},${L.y}" fill="none" stroke="${wx.kind === "night" ? "#c2cddc" : "#8796aa"}" stroke-width="1" vector-effect="non-scaling-stroke"/>

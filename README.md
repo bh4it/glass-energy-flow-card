@@ -339,7 +339,7 @@ app:
     moon: [2, 30]               # moon position at night: left %, top %
 ```
 
-Only labels that have a spot are shown. Battery labels use the keys `bat0`, `bat1` (two or fewer) or `bats` (more, and always on phones).
+Only labels that have a spot are shown. Battery labels use the keys `bat0`, `bat1` (two or fewer) or `bats` (more, and always on phones). With several `climate` units, give each its own anchor and spot as `climate0`, `climate1`, … to label every outdoor unit separately; otherwise one `climate` label shows the sum.
 
 ## Glass Energy Battery Card
 

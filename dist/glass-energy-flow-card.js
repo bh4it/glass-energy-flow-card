@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.7.0-beta.3";
+  const CARD_VERSION = "1.7.0-beta.4";
 
   // ------------------------------------------------------------------ i18n
   // The UI follows Home Assistant's language: German for "de", English
@@ -2489,7 +2489,19 @@ function step1Battery(x,y,w,h,b,compact) {
           s: narrow ? [v.charging && v.socValue != null ? fmtBy("%", v.socValue) : null, v.charging ? T("lädt") : null].filter(Boolean).join(" · ") || null : st,
         });
       }
-      if (d.climate.length) {
+      // One label per unit when the scene has a spot for each (climate0, climate1, …),
+      // anchored at its own outdoor unit; otherwise one summed label.
+      const perUnit = d.climate.length > 1 && d.climate.every((cl, i) => S["climate" + i] && (A["climate" + i] || A.climate));
+      if (perUnit) {
+        d.climate.forEach((cl, i) => {
+          const m = cl.metricValues[0];
+          add("climate" + i, A["climate" + i] || A.climate, {
+            n: cl.name || `${T("Klima")} ${i + 1}`, v: cl.value == null ? (cl.stateText || "–") : fmtW(cl.value),
+            s: m && !sc.compact ? `${m.label || ""} ${fmtBy(m.unit || "kWh", m.value)}`.trim() : null,
+            entity: cl.entity || cl.state_entity,
+          });
+        });
+      } else if (d.climate.length) {
         const p = d.climate.reduce((a, cl) => a + (cl.value || 0), 0);
         const m = d.climate.length === 1 && d.climate[0].metricValues[0];
         add("climate", A.climate, {

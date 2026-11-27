@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.7.0-beta.2";
+  const CARD_VERSION = "1.7.0-beta.3";
 
   // ------------------------------------------------------------------ i18n
   // The UI follows Home Assistant's language: German for "de", English
@@ -2101,18 +2101,19 @@ function step1Battery(x,y,w,h,b,compact) {
 
   /** Effect layer (sun, clouds, rain, snow, frost, night) as plain markup. */
   function appWeatherFx(w, scene) {
+    const [VW, VH] = scene.size;
     const cloud = (cls, l, t, wd, dly = 0) =>
       `<div class="cloud ${cls}" style="left:${l}%;top:${t}%;width:${wd}%;animation-delay:${dly}s"></div>`;
     const crystals = (n) => {
       const R = (s) => { const x = Math.sin(s) * 10000; return x - Math.floor(x); };
       let g = "";
       for (let i = 0; i < n; i++) {
-        const cx = (R(i * 3.1) < 0.5 ? R(i * 1.7) * 18 : 82 + R(i * 1.7) * 18) * 10.24;
-        const cy = R(i * 5.3) * 5.68 * 100, s = 4 + R(i * 7.9) * 9;
+        const cx = (R(i * 3.1) < 0.5 ? R(i * 1.7) * 18 : 82 + R(i * 1.7) * 18) * VW / 100;
+        const cy = R(i * 5.3) * VH, s = 4 + R(i * 7.9) * 9;
         g += `<g transform="translate(${cx.toFixed(1)},${cy.toFixed(1)}) rotate(${(R(i) * 60).toFixed(0)})" opacity="${(0.5 + R(i * 2.2) * 0.5).toFixed(2)}">${
           [0, 60, 120].map((a) => `<g transform="rotate(${a})"><line x1="${-s}" x2="${s}" y1="0" y2="0"/><line x1="${s * 0.5}" y1="0" x2="${s * 0.75}" y2="${s * 0.22}"/><line x1="${s * 0.5}" y1="0" x2="${s * 0.75}" y2="${-s * 0.22}"/></g>`).join("")}</g>`;
       }
-      return `<svg class="crystals" viewBox="0 0 1024 568" preserveAspectRatio="none">${g}</svg>`;
+      return `<svg class="crystals" viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="none">${g}</svg>`;
     };
     let fx = "";
     switch (w.kind) {
@@ -2122,7 +2123,7 @@ function step1Battery(x,y,w,h,b,compact) {
       case "fog": fx = `${cloud("grey", 10, 0, 30)}<div class="fog"></div>`; break;
       case "rainy": fx = `${cloud("dark", 2, 0, 30)}${cloud("dark", 34, -4, 34, -30)}${cloud("dark", 70, 2, 30, -50)}<div class="puddle"></div><div class="rain"></div><div class="rain b"></div>`; break;
       case "snowy": fx = `${cloud("grey", 6, 0, 28)}${cloud("grey", 60, -2, 32, -40)}<div class="snowcap"></div>${crystals(10)}<div class="snow"></div>`; break;
-      case "night": fx = `<div class="stars"></div><div class="moon"></div>${scene.windows ? scene.windows.map(([l, t, s]) =>
+      case "night": fx = `<div class="stars"></div><div class="moon"${Array.isArray(scene.moon) ? ` style="left:${+scene.moon[0]}%;top:${+scene.moon[1]}%;right:auto"` : ""}></div>${scene.windows ? scene.windows.map(([l, t, s]) =>
         `<div class="glow" style="left:${l}%;top:${t}%;width:${s}%"></div>`).join("") : ""}`; break;
       default: break;
     }
@@ -2133,8 +2134,8 @@ function step1Battery(x,y,w,h,b,compact) {
   /** Battery cabinets (gray stacked modules, dark cap, green charge LED). */
   function appBatteriesSvg(bats, spec) {
     if (!bats.length) return "";
-    const { origin: O, along: A, out: B } = spec;
-    const G = (a, b, z = 0) => [O[0] + a * A[0] + b * B[0], O[1] + a * A[1] + b * B[1] - z];
+    const { origin: O, along: A, out: B } = spec, k = spec.scale || 1;
+    const G = (a, b, z = 0) => [O[0] + k * (a * A[0] + b * B[0]), O[1] + k * (a * A[1] + b * B[1] - z)];
     const P = (...q) => q.map((v) => v[0].toFixed(1) + "," + v[1].toFixed(1)).join(" ");
     const W = 26, GAP = 5, D = 11, H = 54, shown = Math.min(bats.length, spec.max || 4);
     const slot = (i) => 10 + i * (W + GAP);
@@ -2168,9 +2169,9 @@ function step1Battery(x,y,w,h,b,compact) {
     return s;
   }
   const appBatAnchor = (spec, i) => {
-    const { origin: O, along: A, out: B } = spec;
+    const { origin: O, along: A, out: B } = spec, k = spec.scale || 1;
     const a = 10 + i * 31 + 13;
-    return [O[0] + a * A[0] + 11 * B[0], O[1] + a * A[1] + 11 * B[1] - 30];
+    return [O[0] + k * (a * A[0] + 11 * B[0]), O[1] + k * (a * A[1] + 11 * B[1] - 30)];
   };
 
   const APP_CHEV = `<svg viewBox="0 0 24 24"><path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/></svg>`;
@@ -2196,15 +2197,16 @@ function step1Battery(x,y,w,h,b,compact) {
     .narrow .scene { margin-top:20px; padding-bottom:42px; }
     .narrow .chip.opt { display:none; } .narrow .chip { padding:5px 10px; }
     .narrow .meters { flex-direction:column; }
-    .photo { width:100%; display:block; aspect-ratio:1024/568; object-fit:cover; transition:filter .8s;
+    .photo { width:100%; display:block; aspect-ratio:var(--ar, 1024/568); object-fit:cover; transition:filter .8s;
       -webkit-mask-image:linear-gradient(180deg, transparent 0%, #000 9%, #000 84%, transparent 100%);
               mask-image:linear-gradient(180deg, transparent 0%, #000 9%, #000 84%, transparent 100%); }
-    .over, .fx, .leaders { position:absolute; left:0; top:0; width:100%; aspect-ratio:1024/568; height:auto; pointer-events:none; }
+    .over, .fx, .leaders { position:absolute; left:0; top:0; width:100%; aspect-ratio:var(--ar, 1024/568); height:auto; pointer-events:none; }
     .over { pointer-events:none; transition:filter .8s; } .over .clickable { pointer-events:auto; cursor:pointer; }
     .fx { overflow:hidden;
       -webkit-mask-image:linear-gradient(180deg, transparent 0%, #000 9%, #000 84%, transparent 100%);
               mask-image:linear-gradient(180deg, transparent 0%, #000 9%, #000 84%, transparent 100%); }
-    .labels { position:absolute; left:0; top:0; width:100%; aspect-ratio:1024/568; }
+    .labels { position:absolute; left:0; top:0; width:100%; aspect-ratio:var(--ar, 1024/568); }
+    .nofade .photo, .nofade .fx { -webkit-mask-image:none; mask-image:none; }
     .lbl { position:absolute; white-space:nowrap; transform:translate(-50%,-100%); padding-bottom:6px; z-index:5; cursor:pointer; }
     .lbl.r { transform:translate(0,-100%); padding-left:8px; }
     .lbl.l { transform:translate(-100%,-100%); padding-right:8px; text-align:right; }
@@ -2212,9 +2214,9 @@ function step1Battery(x,y,w,h,b,compact) {
     .lbl.r.below { transform:translate(0,0); padding-left:8px; } .lbl.l.below { transform:translate(-100%,0); padding-right:8px; }
     .box { display:inline-block; padding:5px 10px 6px; border-radius:14px; background:rgba(255,255,255,.62);
       backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); box-shadow:0 2px 10px rgba(30,60,100,.08); }
-    .lbl .n { display:block; font-size:clamp(10.5px, 0.9cqw, 13px); color:var(--soft); }
+    .lbl .n { display:block; font-size:clamp(12px, 0.9cqw, 13.5px); color:var(--soft); }
     .lbl .v { display:inline-flex; align-items:center; gap:6px; font-size:clamp(15px, 1.4cqw, 21px); font-weight:700; letter-spacing:-.01em; }
-    .lbl .s { display:block; font-size:clamp(10.5px, 0.86cqw, 12.5px); color:var(--soft); margin-top:1px; }
+    .lbl .s { display:block; font-size:clamp(12px, 0.86cqw, 13px); color:var(--soft); margin-top:1px; }
     .s.g { color:var(--prod); font-weight:600; } .s.o { color:var(--disch); font-weight:600; } .s.b { color:var(--gridc); font-weight:600; }
     .lbl.big .box { padding:8px 14px 9px; border-radius:18px; background:rgba(255,255,255,.78); }
     .lbl.big .n { font-weight:600; letter-spacing:.02em; }
@@ -2242,7 +2244,7 @@ function step1Battery(x,y,w,h,b,compact) {
     .tile .im { width:40px; height:40px; border-radius:12px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; flex:none; }
     .tile .im img { width:36px; height:36px; object-fit:contain; } .tile .im ha-icon { --mdc-icon-size:22px; }
     .tile .tt { font-size:13px; color:var(--soft); min-width:0; } .tile .tt b { display:block; color:var(--ink); font-size:16px; margin-top:1px; }
-    .tile .tt small { display:block; font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .tile .tt small { display:block; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .tile.idle { opacity:.6; }
     .lbl .s + .s { margin-top:0; }
     /* PV total under the title when every array has its own label at the producer */
@@ -2280,13 +2282,20 @@ function step1Battery(x,y,w,h,b,compact) {
     .w-cloudy.app, .w-fog.app { background:linear-gradient(180deg,#d3dce4 0%,#e1e7ec 45%,#edf0f3 100%); }
     .w-snowy.app { background:linear-gradient(180deg,#d6dee6 0%,#e7ecf1 45%,#f4f6f8 100%); }
     .frost.app { background:linear-gradient(180deg,#d4e7f5 0%,#e4f0f8 45%,#f1f6f9 100%); }
-    .w-night.app { --ink:#fff; --soft:#a8b6c9; --prod:#3fe0a0; --disch:#ffb84a; --gridc:#7cbcff; background:linear-gradient(180deg,#0e1830 0%,#17223d 45%,#1e2840 100%); }
-    .w-night .box { background:rgba(12,20,38,.55); box-shadow:none; }
-    .w-night .chip { background:rgba(255,255,255,.12); } .w-night .chip ha-icon { color:#c9d4e3; }
-    .w-night .row, .w-night .tile, .w-night.narrow .rows { background:rgba(255,255,255,.08); box-shadow:none; }
-    .w-night.narrow .row { background:none; border-color:rgba(255,255,255,.08); }
-    .w-night .ic, .w-night .tile .im { background:rgba(255,255,255,.1); } .w-night .ic ha-icon { color:#c9d4e3; }
-    .w-night .chev { background:rgba(255,255,255,.16); } .w-night .chev svg { fill:#dfe7f1; }
+    .w-night.app, .dark.app { --ink:#fff; --soft:#a8b6c9; --prod:#3fe0a0; --disch:#ffb84a; --gridc:#7cbcff; background:linear-gradient(180deg,#0e1830 0%,#17223d 45%,#1e2840 100%); }
+    .w-night .box, .dark .box { background:rgba(12,20,38,.55); box-shadow:none; }
+    .w-night .chip, .dark .chip { background:rgba(255,255,255,.12); } .w-night .chip ha-icon, .dark .chip ha-icon { color:#c9d4e3; }
+    .w-night .row, .w-night .tile, .w-night.narrow .rows, .dark .row, .dark .tile, .dark.narrow .rows { background:rgba(255,255,255,.08); box-shadow:none; }
+    .w-night.narrow .row, .dark.narrow .row { background:none; border-color:rgba(255,255,255,.08); }
+    .w-night .ic, .w-night .tile .im, .dark .ic, .dark .tile .im { background:rgba(255,255,255,.1); } .w-night .ic ha-icon, .dark .ic ha-icon { color:#c9d4e3; }
+    .w-night .chev, .dark .chev { background:rgba(255,255,255,.16); } .w-night .chev svg, .dark .chev svg { fill:#dfe7f1; }
+    .dark .pvsum { background:rgba(12,20,38,.55); box-shadow:none; }
+    .dark .lbl.big .box { background:rgba(12,20,38,.62); }
+    /* Dark page: the sky effects stay subtle so a cut-out scene keeps its edges */
+    .dark.app { background:var(--app-bg, radial-gradient(ellipse 70% 60% at 40% 40%, #13244a 0%, #0b1530 55%, #050913 100%)); }
+    .dark .fx .warm, .dark .fx .fog, .dark .fx .puddle, .dark .fx .snowcap { opacity:.35; }
+    .dark .fx .cloud { opacity:.35; } .dark .fx .rain { opacity:.22; } .dark .fx .rain.b { opacity:.14; } .dark .fx .snow { opacity:.6; } .dark .fx .rays { opacity:.12; } .dark .fx .sun { opacity:.45; }
+    .dark.w-sunny .photo, .dark.w-sunny .over { filter:none; }
     .fx .sun { position:absolute; left:4%; top:2%; width:34%; aspect-ratio:1; border-radius:50%;
       background:radial-gradient(circle, rgba(255,250,228,.95) 0 6%, rgba(255,238,190,.55) 14%, rgba(255,236,200,.18) 34%, rgba(255,240,215,0) 62%);
       animation:app-pulse 6s ease-in-out infinite; }
@@ -2334,12 +2343,24 @@ function step1Battery(x,y,w,h,b,compact) {
   const APP_METHODS = {
     _appScene() {
       const app = this._config.app || {};
-      const base = APP_SCENE;
+      // app.scene: a whole picture of your own with its size, anchors, label
+      // spots, battery placement and lit windows. app.image / app.anchors (only
+      // a picture in the built-in 1024 x 568 layout) keep working.
+      const own = app.scene && typeof app.scene === "object" ? app.scene : {};
+      const image = own.image || app.image;
+      const size = Array.isArray(own.size) && own.size[0] > 0 && own.size[1] > 0 ? own.size.map(Number) : APP_VB;
+      const custom = size !== APP_VB;
+      const spots = (k) => ({ ...(custom ? {} : APP_SPOTS[k]), ...((own.spots || {})[k] || {}) });
       return {
-        ...base,
-        image: app.image || BUILTIN_BASE + base.image,
-        anchors: { ...base.anchors, ...(app.anchors || {}) },
-        windows: app.image ? null : base.windows,
+        image: image || BUILTIN_BASE + APP_SCENE.image,
+        size,
+        anchors: { ...(custom ? {} : APP_SCENE.anchors), ...(app.anchors || {}), ...(own.anchors || {}) },
+        batteries: { ...APP_SCENE.batteries, ...(own.batteries || {}) },
+        windows: own.windows || (image ? null : APP_SCENE.windows),
+        spots: { wide: spots("wide"), narrow: spots("narrow") },
+        fade: own.fade !== false,
+        compact: !!own.compact,
+        moon: own.moon || null,
       };
     },
 
@@ -2358,16 +2379,16 @@ function step1Battery(x,y,w,h,b,compact) {
               h.uv ? chip("headerUv", "mdi:weather-sunny-alert", 1) : "",
             ].join("")}</div>
           </div>
-          <div class="scene">
+          <div class="scene${sc.fade ? "" : " nofade"}" style="--ar:${sc.size[0]}/${sc.size[1]}">
             <img class="photo" src="${esc(sc.image)}" alt="">
-            <svg class="over" viewBox="0 0 ${APP_VB[0]} ${APP_VB[1]}"><defs>
+            <svg class="over" viewBox="0 0 ${sc.size[0]} ${sc.size[1]}"><defs>
               <linearGradient id="app-bfront" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c9cdd2"/><stop offset="1" stop-color="#9ea4ab"/></linearGradient>
               <linearGradient id="app-bside" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6f767e"/><stop offset="1" stop-color="#868d95"/></linearGradient>
               <filter id="app-bshadow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
               <filter id="app-ledglow" x="-50%" y="-200%" width="200%" height="500%"><feGaussianBlur stdDeviation="1.2"/></filter>
             </defs><g id="bats"></g></svg>
             <div class="fx" id="fx"></div>
-            <svg class="leaders" id="leaders" viewBox="0 0 ${APP_VB[0]} ${APP_VB[1]}"></svg>
+            <svg class="leaders" id="leaders" viewBox="0 0 ${sc.size[0]} ${sc.size[1]}"></svg>
             <div class="labels" id="labels"></div>
           </div>
           <div class="rows" id="rows"></div>
@@ -2394,9 +2415,10 @@ function step1Battery(x,y,w,h,b,compact) {
     },
 
     _appLabels(d, narrow, sc) {
-      const c = this._config, A = sc.anchors, S = APP_SPOTS[narrow ? "narrow" : "wide"];
+      const c = this._config, A = sc.anchors, S = sc.spots[narrow ? "narrow" : "wide"];
       const out = [];
-      const add = (key, at, o) => { const spot = S[key]; if (spot && at) out.push({ key, at, ...spot, ...o }); };
+      // compact: name and value only (plus the state line); today's yields stay in the header
+      const add = (key, at, o) => { const spot = S[key]; if (spot && at) out.push({ key, at, ...spot, ...o, ...(sc.compact ? { s2: null } : {}) }); };
       // Solar: per building when the strings say where they sit, otherwise one total.
       const night = (v) => fmtW(v);
       const byB = {};
@@ -2428,7 +2450,7 @@ function step1Battery(x,y,w,h,b,compact) {
           });
         }
       }
-      if (c.home.entity) add("home", A.home, { n: narrow ? T("Haus") : T("Hausverbrauch"), v: fmtW(d.home), entity: c.home.entity });
+      if (c.home.entity) add("home", A.home, { n: narrow || sc.compact ? T("Haus") : T("Hausverbrauch"), v: fmtW(d.home), entity: c.home.entity });
       if (c.grid.entity) {
         const g = d.gridDisplayValue ?? d.gridValue;
         add("grid", A.grid, {
@@ -2519,7 +2541,9 @@ function step1Battery(x,y,w,h,b,compact) {
       const narrow = w > 0 && w < 600;
       const sc = this._appScene();
       const wx = appWeather(hass, c);
-      root.className = `app w-${wx.kind}${wx.frost ? " frost" : ""}${narrow ? " narrow" : ""}`;
+      const app = c.app || {};
+      const dark = app.dark === true || app.dark === "on" || (app.dark === "auto" && !!(hass.themes && hass.themes.darkMode));
+      root.className = `app w-${wx.kind}${wx.frost ? " frost" : ""}${narrow ? " narrow" : ""}${dark ? " dark" : ""}`;
 
       // header
       const h = c.header || {};
@@ -2552,10 +2576,11 @@ function step1Battery(x,y,w,h,b,compact) {
       this._appSet("fx", appWeatherFx(wx, sc));
       this._appSet("bats", appBatteriesSvg(d.batteries, sc.batteries));
       const labels = this._appLabels(d, narrow, sc);
-      const pct = (v, i) => (v / APP_VB[i] * 100).toFixed(3) + "%";
+      const pct = (v, i) => (v / sc.size[i] * 100).toFixed(3) + "%";
+      const lc = wx.kind === "night" || dark ? "#c2cddc" : "#8796aa", rs = sc.size[0] / APP_VB[0];
       this._appSet("leaders", labels.filter((L) => !L.free).map((L) =>
-        `<polyline points="${L.at[0]},${L.at[1]} ${L.x},${L.y}" fill="none" stroke="${wx.kind === "night" ? "#c2cddc" : "#8796aa"}" stroke-width="1" vector-effect="non-scaling-stroke"/>
-         <circle cx="${L.at[0]}" cy="${L.at[1]}" r="${narrow ? 5 : 3.3}" fill="#fff" stroke="${wx.kind === "night" ? "#c2cddc" : "#8796aa"}" stroke-width="1.4" vector-effect="non-scaling-stroke"/>`).join(""));
+        `<polyline points="${L.at[0]},${L.at[1]} ${L.x},${L.y}" fill="none" stroke="${lc}" stroke-width="1" vector-effect="non-scaling-stroke"/>
+         <circle cx="${L.at[0]}" cy="${L.at[1]}" r="${((narrow ? 5 : 3.3) * rs).toFixed(2)}" fill="#fff" stroke="${lc}" stroke-width="1.4" vector-effect="non-scaling-stroke"/>`).join(""));
       this._appSet("labels", labels.map((L) =>
         `<div class="lbl ${L.side || ""}${L.below ? " below" : ""}${L.big ? " big" : ""}" style="left:${pct(L.x, 0)};top:${pct(L.y, 1)}" data-entity="${esc(L.entity || "")}">
           <span class="box"><span class="n">${esc(L.n)}</span><span class="v">${esc(L.v)}<span class="chev">${APP_CHEV}</span></span>${
@@ -2573,7 +2598,7 @@ function step1Battery(x,y,w,h,b,compact) {
           <span class="im">${img ? `<img src="${esc(img)}" alt="">` : `<ha-icon icon="${esc(t.icon || "mdi:flash")}" style="color:${esc(inkify(t.color || "#4a7fd0", true))}"></ha-icon>`}</span>
           <span class="tt">${esc(t.name || t.entity)}<b>${esc(t.text)}</b>${t.secondaryText ? `<small>${esc(t.secondaryText)}</small>` : ""}</span></div>`;
       }).join(""));
-      this._appFit(root, w, narrow);
+      this._appFit(root, w, narrow, sc);
     },
 
     /**
@@ -2581,7 +2606,7 @@ function step1Battery(x,y,w,h,b,compact) {
      * header and consumer tiles leave over, and its width follows from the
      * photo's aspect ratio. The summary rows take the rest of the width.
      */
-    _appFit(root, w, narrow) {
+    _appFit(root, w, narrow, sc) {
       const avail = narrow ? 0 : this._availHeight();
       const land = avail > 0 && w >= 900 && w / avail > 1.45;
       root.classList.toggle("land", land);
@@ -2591,7 +2616,7 @@ function step1Battery(x,y,w,h,b,compact) {
       const consH = cons && cons.children.length ? cons.offsetHeight + 10 : 0;
       const inner = w - 36;
       const sceneH = avail - pad - hdrH + overlap - consH;
-      const sw = Math.round(clamp(sceneH * APP_VB[0] / APP_VB[1], inner * 0.5, inner * 0.7));
+      const sw = Math.round(clamp(sceneH * sc.size[0] / sc.size[1], inner * 0.5, inner * 0.7));
       const v = sw - 18 + "px";        // the scene bleeds 18 px into the left padding
       if (root.style.getPropertyValue("--sw") !== v) root.style.setProperty("--sw", v);
     },

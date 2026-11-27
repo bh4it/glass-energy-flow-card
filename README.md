@@ -298,13 +298,48 @@ grid_options:
 | `consumers[]` | `name`, `entity`, `unit`, `icon`, `color`, `image`, `hidden`, `always_show` (never auto-hide this one), `threshold` (W), `secondary` (`entity`, `label`, `unit`) |
 | `layout` | `mode`: `auto` (default), `wide`, `mid`, `narrow`; breakpoints `wide_min` (1100 px), `mid_min` (680 px); `consumers`: `bottom` (default, rows under the house; a single row grows its tiles), `group` (framed in the right column) or `auto` (right column first); `climate`: `right` (default, below the vehicle) or `left` (above the grid). Unless `consumers` is `auto`, storage sits above the grid and both side columns share one width; `text_scale`: extra text size factor, e.g. `1.15` (key figures already grow automatically when the card is drawn small) |
 | `theme` | `preset`: `blau` (blue), `dunkel` (night blue), `mitternacht` (midnight), `petrol`, `violett` (violet), `grafit` (graphite), `hell` (light), `hell-blau` (light blue), `hell-violett` (light violet); `wires`: `puls` (pulse), `strich` (dashes), `ruhig` (static); fine-tune with `center`, `edge`, `spread`, `tile`; `style`: `glas` (default) or `app` (see below) |
-| `app` | only for `theme.style: app`: `weather`: `auto` (default, follows `header.weather`, `header.temp` and `sun.sun`), `off`, or a fixed `sunny`, `partly`, `cloudy`, `fog`, `rainy`, `snowy`, `night`, `frost`; `image`: your own scene picture (1024 × 568 layout); `anchors`: label anchor points for that picture (`pv_house`, `pv_garage`, `pv_shed`, `home`, `grid`, `car`, `climate`, each `[x, y]` in 1024 × 568 units) |
+| `app` | only for `theme.style: app`: `weather`: `auto` (default, follows `header.weather`, `header.temp` and `sun.sun`), `off`, or a fixed `sunny`, `partly`, `cloudy`, `fog`, `rainy`, `snowy`, `night`, `frost`; `image`: your own scene picture (1024 × 568 layout); `anchors`: label anchor points for that picture (`pv_house`, `pv_balcony`, `pv_garage`, `pv_shed`, `home`, `grid`, `car`, `climate`, each `[x, y]` in 1024 × 568 units); `scene`: a picture of your own property in any size (see below); `dark`: `true` for a dark page (fits dark dashboards), `auto` to follow the Home Assistant theme |
 
 ### App style *(beta)*
 
 > Released as a beta (1.7.0-beta.x). In HACS, open the card, choose **Redownload** and switch on **Show beta versions** to get it. To go back, redownload 1.6.0 the same way; the glass style is unchanged either way, and `theme.style` simply falls back to glass on older versions.
 
 `theme: { style: app }` swaps the glass drawing for a light, app-like page: a photo of a house with a garage and a garden house, the live values pinned around it, compact rows below (PV forecast, storage, car, grid today, climate) and the consumers as tiles. Every configured battery stands as a cabinet in front of the garage (up to four, then "+n"), with a green LED showing its charge. The scene follows the weather: sun, clouds, rain, snow, frost at or below 0 °C, and a night view with lit windows. Assign each PV array to a building with `building` to get one label per building. Everything else (auto-hiding consumers, more-info on tap, the editor) works as in the glass style. When the card has to fit a wide, short space (a wall tablet such as an Echo Show, a panel view or `fit_height: always`), it switches to landscape: the photo on the left at the height that is left, the rows beside it, the consumers below. Without building assignments the label above the roof shows the total PV power and today's yield.
+
+#### Your own property as the scene
+
+`app.scene` replaces the built-in photo with a picture of your own house, for example an isometric render with a transparent background (WebP or PNG with alpha, put it under `/config/www/` and use `/local/...`). All coordinates are pixels of that picture:
+
+```yaml
+app:
+  dark: true
+  scene:
+    image: /local/my-house.webp
+    size: [1352, 1024]          # width and height of the picture
+    fade: false                 # no fade at the top and bottom (for cut-out pictures)
+    compact: true               # labels show name and value only
+    anchors:                    # where each leader line starts
+      pv_house: [696, 345]
+      pv_balcony: [811, 255]
+      pv_garage: [241, 640]
+      pv_shed: [951, 68]
+      home: [701, 440]
+      car: [496, 605]
+      climate: [806, 628]
+      grid: [96, 790]
+    spots:                      # where each label sits: x, y, side (l / r), below
+      wide:
+        pv_house: { x: 360, y: 300, side: l }
+        home: { x: 1120, y: 455, side: r }
+        car: { x: 623, y: 803, side: r, below: 1 }
+      narrow:                   # phones: pv_house (PV total), home, grid, car, bats
+        pv_house: { x: 415, y: 225, side: l }
+    batteries: { origin: [772, 628], along: [-0.98, -0.2], out: [-0.45, 0.9], scale: 0.75, max: 2 }
+    windows: [[47.8, 42, 6]]    # lit windows at night: left %, top %, size %
+    moon: [2, 30]               # moon position at night: left %, top %
+```
+
+Only labels that have a spot are shown. Battery labels use the keys `bat0`, `bat1` (two or fewer) or `bats` (more, and always on phones).
 
 ## Glass Energy Battery Card
 

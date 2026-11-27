@@ -2367,7 +2367,7 @@ function step1Battery(x,y,w,h,b,compact) {
       animation:app-acwarm 2.4s ease-out infinite; }
     .ac i:nth-of-type(2) { animation-delay:-.6s; margin-left:-18%; } .ac i:nth-of-type(3) { animation-delay:-1.2s; margin-left:12%; }
     .ac i:nth-of-type(4) { animation-delay:-1.8s; margin-left:-4%; }
-    .ac.cool i, .ac.dry i { width:17%; filter:drop-shadow(0 0 2px rgba(var(--c),.9)); background:radial-gradient(circle, #fff 0 32%, rgba(var(--c),.95) 42%, rgba(var(--c),0) 76%); animation-name:app-accool; animation-duration:2.8s; }
+    .ac.cool i, .ac.dry i { width:11%; filter:drop-shadow(0 0 2px rgba(var(--c),.9)); background:radial-gradient(circle, #e6f5ff 0 18%, rgba(var(--c),.95) 34%, rgba(var(--c),0) 76%); animation-name:app-accool; animation-duration:2.8s; }
     .ac.cool b, .ac.dry b { mix-blend-mode:normal; background:radial-gradient(circle, rgba(var(--c),.55) 0, rgba(var(--c),.25) 34%, rgba(var(--c),0) 66%); }
     .ac.idle b { animation:none; opacity:.45; } .ac.idle i { display:none; }
     @keyframes app-acglow { 50% { transform:scale(1.12); opacity:.75; } }
@@ -2406,6 +2406,7 @@ function step1Battery(x,y,w,h,b,compact) {
         fade: own.fade !== false,
         compact: !!own.compact,
         moon: own.moon || null,
+        climateFx: Array.isArray(own.climate_fx) ? own.climate_fx : null,
       };
     },
 
@@ -2635,11 +2636,13 @@ function step1Battery(x,y,w,h,b,compact) {
       this._appSet("fx", appWeatherFx(wx, sc));
       this._appSet("bats", appBatteriesSvg(d.batteries, sc.batteries));
       {
+        // The effect sits on the unit itself (scene.climate_fx[i]); the leader line starts at its anchor,
+        // which can then be an edge of the unit so the line does not cover it.
         const A = sc.anchors, per = d.climate.length > 1 && d.climate.every((cl, i) => A["climate" + i]);
-        const any = d.climate.find((cl) => cl.mode);
+        const any = d.climate.find((cl) => cl.mode), FX = sc.climateFx || [];
         this._appSet("acfx", appClimateFx(per
-          ? d.climate.map((cl, i) => ({ at: A["climate" + i], mode: cl.mode, running: cl.active }))
-          : any ? [{ at: A.climate, mode: any.mode, running: d.climate.some((cl) => cl.active) }] : [], sc));
+          ? d.climate.map((cl, i) => ({ at: FX[i] || A["climate" + i], mode: cl.mode, running: cl.active }))
+          : any ? [{ at: FX[0] || A.climate, mode: any.mode, running: d.climate.some((cl) => cl.active) }] : [], sc));
       }
       const labels = this._appLabels(d, narrow, sc);
       const pct = (v, i) => (v / sc.size[i] * 100).toFixed(3) + "%";

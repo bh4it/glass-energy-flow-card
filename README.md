@@ -338,6 +338,7 @@ app:
     # or, when your storage is part of the picture: draw: false, anchor: [x, y], led: [x1, y1, x2, y2]
     windows: [[47.8, 42, 6]]    # lit windows at night: left %, top %, size %
     moon: [2, 30]               # moon position at night: left %, top %
+    climate_fx: [[916, 245], [806, 628]]   # heating/cooling effect on each unit (anchors can then sit at an edge)
 ```
 
 Only labels that have a spot are shown. Battery labels use the keys `bat0`, `bat1` (two or fewer) or `bats` (more, and always on phones). With several `climate` units, give each its own anchor and spot as `climate0`, `climate1`, … to label every outdoor unit separately; otherwise one `climate` label shows the sum. While a unit is on, its outdoor unit glows warm with rising puffs when heating and blue with frost sparks when cooling, and the label says so; the mode comes from `state_entity`, or from `mode_entities` (a list, for a multi-split with several indoor units: the first one that is on decides).

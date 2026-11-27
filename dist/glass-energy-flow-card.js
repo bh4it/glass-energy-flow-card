@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.7.0-beta.4";
+  const CARD_VERSION = "1.7.0-beta.5";
 
   // ------------------------------------------------------------------ i18n
   // The UI follows Home Assistant's language: German for "de", English
@@ -36,7 +36,7 @@
     "Einspeisung": "Export",
     "Netz": "Grid",
     "Bezug heute": "Import today",
-    "lädt": "charging",
+    "lädt": "charging", "heizt": "heating", "kühlt": "cooling", "entfeuchtet": "drying", "lüftet": "fan",
     "entlädt": "discharging",
     "hält": "idle",
     "Realer Bezug": "Metered import",
@@ -2174,6 +2174,16 @@ function step1Battery(x,y,w,h,b,compact) {
     return [O[0] + k * (a * A[0] + 11 * B[0]), O[1] + k * (a * A[1] + 11 * B[1] - 30)];
   };
 
+  // Climate modes: state word and its colour class in the labels
+  const APP_MODE = { heat: ["heizt", "o"], cool: ["kühlt", "b"], dry: ["entfeuchtet", "b"], fan: ["lüftet", ""] };
+
+  /** Air effect at the outdoor units: warm puffs when heating, frost sparks when cooling. */
+  function appClimateFx(units, sc) {
+    const pct = (v, i) => (v / sc.size[i] * 100).toFixed(2) + "%";
+    return units.filter((u) => u.at && ["heat", "cool", "dry", "fan"].includes(u.mode)).map((u) =>
+      `<div class="ac ${u.mode}${u.running ? "" : " idle"}" style="left:${pct(u.at[0], 0)};top:${pct(u.at[1], 1)}"><b></b><i></i><i></i><i></i><i></i></div>`).join("");
+  }
+
   const APP_CHEV = `<svg viewBox="0 0 24 24"><path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/></svg>`;
 
   const APP_CSS = `
@@ -2330,6 +2340,25 @@ function step1Battery(x,y,w,h,b,compact) {
     .fx .moon { position:absolute; right:22%; top:4%; width:44px; height:44px; border-radius:50%; box-shadow:-10px 6px 0 0 #f4efd8; transform:rotate(-20deg); filter:drop-shadow(0 0 12px rgba(255,246,214,.55)); }
     .fx .glow { position:absolute; aspect-ratio:1; transform:translate(-50%,-50%); border-radius:50%; background:radial-gradient(circle, rgba(255,200,120,.6), rgba(255,200,120,0) 70%); mix-blend-mode:screen; }
     .led-on { animation:app-led 2.4s ease-in-out infinite; }
+    .acfx { position:absolute; left:0; top:0; width:100%; aspect-ratio:var(--ar, 1024/568); pointer-events:none; z-index:2; }
+    .ac { position:absolute; width:8.5%; aspect-ratio:1; transform:translate(-50%,-50%); --c:255,140,50; }
+    .ac.cool, .ac.dry { --c:70,170,255; } .ac.fan { --c:220,230,240; }
+    .ac b { position:absolute; inset:-45%; border-radius:50%; mix-blend-mode:screen;
+      background:radial-gradient(circle, rgba(var(--c),.8) 0, rgba(var(--c),.35) 34%, rgba(var(--c),0) 66%);
+      animation:app-acglow 2.6s ease-in-out infinite; }
+    .ac i { position:absolute; left:50%; top:50%; width:28%; aspect-ratio:1; border-radius:50%; opacity:0;
+      background:radial-gradient(circle, rgba(var(--c),.95) 0 30%, rgba(var(--c),0) 72%); filter:blur(.5px);
+      animation:app-acwarm 2.4s ease-out infinite; }
+    .ac i:nth-of-type(2) { animation-delay:-.6s; margin-left:-18%; } .ac i:nth-of-type(3) { animation-delay:-1.2s; margin-left:12%; }
+    .ac i:nth-of-type(4) { animation-delay:-1.8s; margin-left:-4%; }
+    .ac.cool i, .ac.dry i { width:17%; filter:drop-shadow(0 0 2px rgba(var(--c),.9)); background:radial-gradient(circle, #fff 0 32%, rgba(var(--c),.95) 42%, rgba(var(--c),0) 76%); animation-name:app-accool; animation-duration:2.8s; }
+    .ac.cool b, .ac.dry b { mix-blend-mode:normal; background:radial-gradient(circle, rgba(var(--c),.55) 0, rgba(var(--c),.25) 34%, rgba(var(--c),0) 66%); }
+    .ac.idle b { animation:none; opacity:.45; } .ac.idle i { display:none; }
+    @keyframes app-acglow { 50% { transform:scale(1.12); opacity:.75; } }
+    @keyframes app-acwarm { 0% { opacity:0; transform:translate(-50%,-30%) scale(.6); } 20% { opacity:.9; }
+      100% { opacity:0; transform:translate(-50%,-260%) scale(1.5); } }
+    @keyframes app-accool { 0% { opacity:0; transform:translate(-50%,-50%) scale(.5); } 25% { opacity:1; }
+      100% { opacity:0; transform:translate(-160%,140%) scale(1); } }
     @keyframes app-pulse { 50% { transform:scale(1.05); opacity:.9; } }
     @keyframes app-spin { to { transform:rotate(360deg); } }
     @keyframes app-drift { 0%, 100% { transform:translateX(-6%); } 50% { transform:translateX(6%); } }
@@ -2337,7 +2366,7 @@ function step1Battery(x,y,w,h,b,compact) {
     @keyframes app-snow { to { background-position:20px 80px, 60px 200px, 30px 85px; } }
     @keyframes app-twinkle { 50% { opacity:.5; } }
     @keyframes app-led { 50% { opacity:.55; } }
-    @media (prefers-reduced-motion: reduce) { .fx *, .led-on { animation:none !important; } }
+    @media (prefers-reduced-motion: reduce) { .fx *, .led-on, .acfx * { animation:none !important; } .ac i { display:none; } }
   `;
 
   const APP_METHODS = {
@@ -2388,6 +2417,7 @@ function step1Battery(x,y,w,h,b,compact) {
               <filter id="app-ledglow" x="-50%" y="-200%" width="200%" height="500%"><feGaussianBlur stdDeviation="1.2"/></filter>
             </defs><g id="bats"></g></svg>
             <div class="fx" id="fx"></div>
+            <div class="acfx" id="acfx"></div>
             <svg class="leaders" id="leaders" viewBox="0 0 ${sc.size[0]} ${sc.size[1]}"></svg>
             <div class="labels" id="labels"></div>
           </div>
@@ -2497,8 +2527,9 @@ function step1Battery(x,y,w,h,b,compact) {
           const m = cl.metricValues[0];
           add("climate" + i, A["climate" + i] || A.climate, {
             n: cl.name || `${T("Klima")} ${i + 1}`, v: cl.value == null ? (cl.stateText || "–") : fmtW(cl.value),
-            s: m && !sc.compact ? `${m.label || ""} ${fmtBy(m.unit || "kWh", m.value)}`.trim() : null,
-            entity: cl.entity || cl.state_entity,
+            s: APP_MODE[cl.mode] ? T(APP_MODE[cl.mode][0]) : m && !sc.compact ? `${m.label || ""} ${fmtBy(m.unit || "kWh", m.value)}`.trim() : null,
+            sc: APP_MODE[cl.mode] ? APP_MODE[cl.mode][1] : null,
+            entity: cl.entity || cl.state_entity || (cl.mode_entities || [])[0],
           });
         });
       } else if (d.climate.length) {
@@ -2587,6 +2618,13 @@ function step1Battery(x,y,w,h,b,compact) {
       // scene layers
       this._appSet("fx", appWeatherFx(wx, sc));
       this._appSet("bats", appBatteriesSvg(d.batteries, sc.batteries));
+      {
+        const A = sc.anchors, per = d.climate.length > 1 && d.climate.every((cl, i) => A["climate" + i]);
+        const any = d.climate.find((cl) => cl.mode);
+        this._appSet("acfx", appClimateFx(per
+          ? d.climate.map((cl, i) => ({ at: A["climate" + i], mode: cl.mode, running: cl.active }))
+          : any ? [{ at: A.climate, mode: any.mode, running: d.climate.some((cl) => cl.active) }] : [], sc));
+      }
       const labels = this._appLabels(d, narrow, sc);
       const pct = (v, i) => (v / sc.size[i] * 100).toFixed(3) + "%";
       const lc = wx.kind === "night" || dark ? "#c2cddc" : "#8796aa", rs = sc.size[0] / APP_VB[0];
@@ -2854,7 +2892,20 @@ function step1Battery(x,y,w,h,b,compact) {
         const st = cl.state_entity ? hass.states[cl.state_entity] : null;
         const on = p != null ? p > (cl.threshold ?? 3)
           : !cl.entity && st ? !["off", "unavailable", "unknown"].includes(st.state) : false;
-        return { ...cl, value: p, stateText: st ? hass.formatEntityState(st) : null, active: on,
+        // heat / cool / dry / fan while a unit is switched on: hvac_action when the
+        // integration reports one, otherwise the mode. mode_entities lists every
+        // indoor unit of a multi-split (the first one that is on decides).
+        const ids = Array.isArray(cl.mode_entities) && cl.mode_entities.length ? cl.mode_entities : cl.state_entity ? [cl.state_entity] : [];
+        let mode = null;
+        for (const id of ids) {
+          const ms = hass.states[id];
+          if (!ms || ["off", "unavailable", "unknown"].includes(ms.state)) continue;
+          const act = ms.attributes && ms.attributes.hvac_action;
+          const k = act && act !== "idle" && act !== "off" ? act : ms.state;
+          mode = ({ heating: "heat", heat: "heat", cooling: "cool", cool: "cool", drying: "dry", dry: "dry", fan: "fan", fan_only: "fan" })[k] || "on";
+          break;
+        }
+        return { ...cl, value: p, stateText: st ? hass.formatEntityState(st) : null, active: on, mode,
                  metricValues: (cl.metrics || []).map((m) => ({ ...m, value: num(hass, m.entity) })) };
       });
       const now = Date.now();

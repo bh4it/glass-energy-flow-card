@@ -335,6 +335,7 @@ app:
       narrow:                   # phones: pv_house (PV total), home, grid, car, bats
         pv_house: { x: 415, y: 225, side: l }
     batteries: { origin: [772, 628], along: [-0.98, -0.2], out: [-0.45, 0.9], scale: 0.75, max: 2 }
+    # or, when your storage is part of the picture: draw: false, anchor: [x, y], led: [x1, y1, x2, y2]
     windows: [[47.8, 42, 6]]    # lit windows at night: left %, top %, size %
     moon: [2, 30]               # moon position at night: left %, top %
 ```

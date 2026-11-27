@@ -2134,6 +2134,21 @@ function step1Battery(x,y,w,h,b,compact) {
   /** Battery cabinets (gray stacked modules, dark cap, green charge LED). */
   function appBatteriesSvg(bats, spec) {
     if (!bats.length) return "";
+    // draw: false – the storage is part of the picture; led = [x1, y1, x2, y2] then shows the
+    // average charge as a glowing bar (green while charging or idle, amber while discharging).
+    if (spec.draw === false) {
+      const L = spec.led;
+      if (!Array.isArray(L) || L.length < 4) return "";
+      const socs = bats.map((b) => b.socValue).filter((v) => v != null);
+      const soc = clamp((socs.length ? socs.reduce((a, v) => a + v, 0) / socs.length : 0) / 100, 0.04, 1);
+      const pw = bats.reduce((a, b) => a + (b.powerValue || 0), 0), active = Math.abs(pw) > 5;
+      const led = active && pw > 0 ? "#ffb028" : "#46f0a6";
+      const xe = L[0] + (L[2] - L[0]) * soc, ye = L[1] + (L[3] - L[1]) * soc;
+      return `<g data-entity="${esc(bats[0].soc || bats[0].power)}" class="clickable">
+        <line x1="${L[0]}" y1="${L[1]}" x2="${L[2]}" y2="${L[3]}" stroke="#14181d" stroke-width="2.6" stroke-linecap="round"/>
+        <line class="${active ? "led-on" : ""}" x1="${L[0]}" y1="${L[1]}" x2="${xe.toFixed(1)}" y2="${ye.toFixed(1)}" stroke="${led}" stroke-width="2.4" stroke-linecap="round" filter="url(#app-ledglow)"/>
+        <line x1="${L[0]}" y1="${L[1]}" x2="${xe.toFixed(1)}" y2="${ye.toFixed(1)}" stroke="#eafff5" stroke-width=".8" stroke-linecap="round" opacity=".8"/></g>`;
+    }
     const { origin: O, along: A, out: B } = spec, k = spec.scale || 1;
     const G = (a, b, z = 0) => [O[0] + k * (a * A[0] + b * B[0]), O[1] + k * (a * A[1] + b * B[1] - z)];
     const P = (...q) => q.map((v) => v[0].toFixed(1) + "," + v[1].toFixed(1)).join(" ");
@@ -2169,6 +2184,7 @@ function step1Battery(x,y,w,h,b,compact) {
     return s;
   }
   const appBatAnchor = (spec, i) => {
+    if (Array.isArray(spec.anchor)) return spec.anchor;
     const { origin: O, along: A, out: B } = spec, k = spec.scale || 1;
     const a = 10 + i * 31 + 13;
     return [O[0] + k * (a * A[0] + 11 * B[0]), O[1] + k * (a * A[1] + 11 * B[1] - 30)];

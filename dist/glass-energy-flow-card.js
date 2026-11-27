@@ -2476,7 +2476,8 @@ function step1Battery(x,y,w,h,b,compact) {
       const c = this._config, A = sc.anchors, S = sc.spots[narrow ? "narrow" : "wide"];
       const out = [];
       // compact: name and value only (plus the state line); today's yields stay in the header
-      const add = (key, at, o) => { const spot = S[key]; if (spot && at) out.push({ key, at, ...spot, ...o, ...(sc.compact ? { s2: null } : {}) }); };
+      // (the car keeps only name and value: its state is in the rows)
+      const add = (key, at, o) => { const spot = S[key]; if (spot && at) out.push({ key, at, ...spot, ...o, ...(sc.compact ? { s2: null, ...(key === "car" ? { s: null } : {}) } : {}) }); };
       // Solar: per building when the strings say where they sit, otherwise one total.
       const night = (v) => fmtW(v);
       const byB = {};

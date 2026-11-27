@@ -2237,6 +2237,7 @@ function step1Battery(x,y,w,h,b,compact) {
     .lbl.r { transform:translate(0,-100%); padding-left:8px; }
     .lbl.l { transform:translate(-100%,-100%); padding-right:8px; text-align:right; }
     .lbl.below { transform:translate(-50%,0); padding:6px 0 0; }
+    .lbl .n ha-icon { --mdc-icon-size:15px; width:15px; height:15px; margin:-2px 4px 0 0; vertical-align:middle; color:var(--ink); opacity:.85; }
     .lbl.free { padding:0; } .lbl.free .box { text-align:center; } .lbl.free .v { justify-content:center; }
     .lbl.r.below { transform:translate(0,0); padding-left:8px; } .lbl.l.below { transform:translate(-100%,0); padding-right:8px; }
     .box { display:inline-block; padding:5px 10px 6px; border-radius:14px; background:rgba(255,255,255,.62);
@@ -2662,7 +2663,7 @@ function step1Battery(x,y,w,h,b,compact) {
       this._appLead = { labels, sc, lc, r: (narrow ? 5 : 3.3) * rs };
       this._appSet("labels", labels.map((L) =>
         `<div class="lbl ${L.side || ""}${L.below ? " below" : ""}${L.big ? " big" : ""}${L.free ? " free" : ""}" style="left:${pct(L.x, 0)};top:${pct(L.y, 1)}" data-entity="${esc(L.entity || "")}">
-          <span class="box"><span class="n">${esc(L.n)}</span><span class="v">${esc(L.v)}<span class="chev">${APP_CHEV}</span></span>${
+          <span class="box"><span class="n">${L.icon ? `<ha-icon icon="${esc(L.icon)}"></ha-icon>` : ""}${esc(L.n)}</span><span class="v">${esc(L.v)}<span class="chev">${APP_CHEV}</span></span>${
           L.s ? `<span class="s ${L.sc || ""}">${esc(L.s)}</span>` : ""}${
           L.s2 ? `<span class="s ${L.sc2 || ""}">${esc(L.s2)}</span>` : ""}</span></div>`).join(""));
 

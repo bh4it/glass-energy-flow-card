@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.7.0-beta.6";
+  const CARD_VERSION = "1.7.0-beta.7";
 
   // ------------------------------------------------------------------ i18n
   // The UI follows Home Assistant's language: German for "de", English
@@ -2233,6 +2233,20 @@ function step1Battery(x,y,w,h,b,compact) {
               mask-image:linear-gradient(180deg, transparent 0%, #000 9%, #000 84%, transparent 100%); }
     .labels { position:absolute; left:0; top:0; width:100%; aspect-ratio:var(--ar, 1024/568); }
     .nofade .photo, .nofade .fx { -webkit-mask-image:none; mask-image:none; }
+    .app > .sky { position:absolute; inset:0; width:auto; height:auto; aspect-ratio:auto; z-index:0; border-radius:inherit; pointer-events:none;
+      -webkit-mask-image:none; mask-image:none; }
+    .app > .sky:empty { display:none; }
+    .dark > .sky .frost { opacity:.35; } .dark > .sky .crystals { opacity:.5; }
+    /* Dark page: keep the house crisp – the weather shows in the sky, the picture only shifts a little */
+    .app.dark .photo, .app.dark .over { filter:contrast(1.06) saturate(1.04); }
+    /* Contrast on the dark page: opaque panels so sky and clouds never show through text */
+    .app.dark .row, .app.dark .tile, .app.dark.narrow .rows { background:rgba(16,27,52,.92); box-shadow:0 6px 18px rgba(0,0,0,.25); }
+    .app.dark.narrow .row { background:none; box-shadow:none; }
+    .app.dark .box { background:rgba(10,17,34,.8); box-shadow:0 2px 10px rgba(0,0,0,.35); }
+    .app.dark .lbl .n, .app.dark .row .tx small, .app.dark .tile .tt, .app.dark .meters { color:#b9c6d8; }
+    .app.dark.w-night .photo, .app.dark.w-night .over { filter:brightness(.78) saturate(.95) contrast(1.1); }
+    .app.dark.w-rainy .photo, .app.dark.w-rainy .over { filter:brightness(.92) saturate(.9) contrast(1.06); }
+    .app.dark.w-cloudy .photo, .app.dark.w-cloudy .over, .app.dark.w-fog .photo, .app.dark.w-fog .over { filter:saturate(.95) contrast(1.05); }
     .lbl { position:absolute; white-space:nowrap; transform:translate(-50%,-100%); padding-bottom:6px; z-index:5; cursor:pointer; }
     .lbl.r { transform:translate(0,-100%); padding-left:8px; }
     .lbl.l { transform:translate(-100%,-100%); padding-right:8px; text-align:right; }
@@ -2427,7 +2441,7 @@ function step1Battery(x,y,w,h,b,compact) {
       const chip = (id, ic, opt) => `<div class="chip${opt ? " opt" : ""}"><ha-icon id="${id}Icon" icon="${ic}"></ha-icon><span id="${id}">–</span></div>`;
       const sc = this._appScene();
       this.shadowRoot.innerHTML = `<style>${APP_CSS}</style>
-        <div class="app" id="app">
+        <div class="app" id="app"><div class="sky fx" id="sky"></div>
           <div class="hdr">
             <div><div class="tl"><div class="t">${esc(c.title || T("Energie"))}</div><div class="pvsum" id="pvsum"></div></div><div class="meters" id="meters"></div></div>
             <div class="chips">${[
@@ -2646,7 +2660,16 @@ function step1Battery(x,y,w,h,b,compact) {
       }
 
       // scene layers
-      this._appSet("fx", appWeatherFx(wx, sc));
+      // Dark page: the sky (sun, clouds, rain, snow, frost, stars, moon) spans the whole card and
+      // only the lit windows stay on the house; otherwise all effects sit on the scene.
+      if (dark) {
+        this._appSet("sky", appWeatherFx(wx, { ...sc, windows: null }));
+        this._appSet("fx", wx.kind === "night" && sc.windows ? sc.windows.map(([l, t, sz]) =>
+          `<div class="glow" style="left:${l}%;top:${t}%;width:${sz}%"></div>`).join("") : "");
+      } else {
+        this._appSet("sky", "");
+        this._appSet("fx", appWeatherFx(wx, sc));
+      }
       this._appSet("bats", appBatteriesSvg(d.batteries, sc.batteries));
       {
         // The effect sits on the unit itself (scene.climate_fx[i]); the leader line starts at its anchor,

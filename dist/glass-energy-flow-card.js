@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.7.0-beta.5";
+  const CARD_VERSION = "1.7.0-beta.6";
 
   // ------------------------------------------------------------------ i18n
   // The UI follows Home Assistant's language: German for "de", English
@@ -2237,6 +2237,7 @@ function step1Battery(x,y,w,h,b,compact) {
     .lbl.r { transform:translate(0,-100%); padding-left:8px; }
     .lbl.l { transform:translate(-100%,-100%); padding-right:8px; text-align:right; }
     .lbl.below { transform:translate(-50%,0); padding:6px 0 0; }
+    .lbl.free { padding:0; } .lbl.free .box { text-align:center; } .lbl.free .v { justify-content:center; }
     .lbl.r.below { transform:translate(0,0); padding-left:8px; } .lbl.l.below { transform:translate(-100%,0); padding-right:8px; }
     .box { display:inline-block; padding:5px 10px 6px; border-radius:14px; background:rgba(255,255,255,.62);
       backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); box-shadow:0 2px 10px rgba(30,60,100,.08); }
@@ -2296,6 +2297,16 @@ function step1Battery(x,y,w,h,b,compact) {
     .land .row { padding:11px 14px; } .land .row .tx { font-size:16px; } .land .row .val { font-size:16px; }
     .land .cons { grid-area:cons; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; margin-top:10px; }
     .land .tile { padding:9px 11px; }
+    /* app.tall: the scene takes the full height on the left, rows and consumer
+       tiles share a narrow column on the right */
+    .app.land.tall { grid-template-areas:"hdr hdr" "scene rows" "scene cons"; grid-template-rows:auto auto 1fr; }
+    .land.tall .rows { align-self:start; gap:6px; } .land.tall .row { padding:7px 12px; border-radius:16px; }
+    .land.tall .row .tx { font-size:14px; } .land.tall .row .val { font-size:15px; } .land.tall .row .tx small { font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .land.tall .ic { width:26px; height:26px; }
+    .land.tall .cons { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:6px; margin-top:8px; align-self:start; }
+    .land.tall .tile { padding:6px 9px; border-radius:14px; gap:8px; } .land.tall .tile .im { width:30px; height:30px; border-radius:9px; }
+    .land.tall .tile .im img { width:26px; height:26px; } .land.tall .tile .tt { font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .land.tall .tile .tt b { font-size:14px; }
 
     /* weather moods */
     .w-sunny .photo, .w-sunny .over { filter:saturate(1.08) brightness(1.03); }
@@ -2647,11 +2658,9 @@ function step1Battery(x,y,w,h,b,compact) {
       const labels = this._appLabels(d, narrow, sc);
       const pct = (v, i) => (v / sc.size[i] * 100).toFixed(3) + "%";
       const lc = wx.kind === "night" || dark ? "#c2cddc" : "#8796aa", rs = sc.size[0] / APP_VB[0];
-      this._appSet("leaders", labels.filter((L) => !L.free).map((L) =>
-        `<polyline points="${L.at[0]},${L.at[1]} ${L.x},${L.y}" fill="none" stroke="${lc}" stroke-width="1" vector-effect="non-scaling-stroke"/>
-         <circle cx="${L.at[0]}" cy="${L.at[1]}" r="${((narrow ? 5 : 3.3) * rs).toFixed(2)}" fill="#fff" stroke="${lc}" stroke-width="1.4" vector-effect="non-scaling-stroke"/>`).join(""));
+      this._appLead = { labels, sc, lc, r: (narrow ? 5 : 3.3) * rs };
       this._appSet("labels", labels.map((L) =>
-        `<div class="lbl ${L.side || ""}${L.below ? " below" : ""}${L.big ? " big" : ""}" style="left:${pct(L.x, 0)};top:${pct(L.y, 1)}" data-entity="${esc(L.entity || "")}">
+        `<div class="lbl ${L.side || ""}${L.below ? " below" : ""}${L.big ? " big" : ""}${L.free ? " free" : ""}" style="left:${pct(L.x, 0)};top:${pct(L.y, 1)}" data-entity="${esc(L.entity || "")}">
           <span class="box"><span class="n">${esc(L.n)}</span><span class="v">${esc(L.v)}<span class="chev">${APP_CHEV}</span></span>${
           L.s ? `<span class="s ${L.sc || ""}">${esc(L.s)}</span>` : ""}${
           L.s2 ? `<span class="s ${L.sc2 || ""}">${esc(L.s2)}</span>` : ""}</span></div>`).join(""));
@@ -2668,6 +2677,32 @@ function step1Battery(x,y,w,h,b,compact) {
           <span class="tt">${esc(t.name || t.entity)}<b>${esc(t.text)}</b>${t.secondaryText ? `<small>${esc(t.secondaryText)}</small>` : ""}</span></div>`;
       }).join(""));
       this._appFit(root, w, narrow, sc);
+      this._appLeaders();
+      cancelAnimationFrame(this._leadRaf);
+      this._leadRaf = requestAnimationFrame(() => this._appLeaders());
+    },
+
+    /**
+     * Leader lines: from the anchor dot to the middle of the label edge that
+     * faces it, measured from the rendered boxes so line and value always meet.
+     * Labels with `free` sit on their object and get neither line nor dot.
+     */
+    _appLeaders() {
+      const st = this._appLead, wrap = this.shadowRoot.getElementById("labels");
+      if (!st || !wrap) return;
+      const R = wrap.getBoundingClientRect();
+      if (!R.width) return;
+      const k = st.sc.size[0] / R.width, els = wrap.querySelectorAll(".lbl");
+      const out = st.labels.map((L, i) => {
+        if (L.free || !els[i]) return "";
+        const b = els[i].querySelector(".box").getBoundingClientRect();
+        const x0 = (b.left - R.left) * k, x1 = (b.right - R.left) * k, y0 = (b.top - R.top) * k, y1 = (b.bottom - R.top) * k;
+        const [ax, ay] = L.at;
+        const end = ax < x0 ? [x0, (y0 + y1) / 2] : ax > x1 ? [x1, (y0 + y1) / 2] : ay < y0 ? [(x0 + x1) / 2, y0] : [(x0 + x1) / 2, y1];
+        return `<polyline points="${ax},${ay} ${end[0].toFixed(1)},${end[1].toFixed(1)}" fill="none" stroke="${st.lc}" stroke-width="1" vector-effect="non-scaling-stroke"/>
+         <circle cx="${ax}" cy="${ay}" r="${st.r.toFixed(2)}" fill="#fff" stroke="${st.lc}" stroke-width="1.4" vector-effect="non-scaling-stroke"/>`;
+      }).join("");
+      this._appSet("leaders", out);
     },
 
     /**
@@ -2678,14 +2713,16 @@ function step1Battery(x,y,w,h,b,compact) {
     _appFit(root, w, narrow, sc) {
       const avail = narrow ? 0 : this._availHeight();
       const land = avail > 0 && w >= 900 && w / avail > 1.45;
+      const tall = land && !!(this._config.app || {}).tall;
       root.classList.toggle("land", land);
+      root.classList.toggle("tall", tall);
       if (!land) { root.style.removeProperty("--sw"); return; }
       const hdr = root.querySelector(".hdr"), cons = this.shadowRoot.getElementById("cons");
       const pad = 34, overlap = 26, hdrH = hdr ? hdr.offsetHeight : 40;
       const consH = cons && cons.children.length ? cons.offsetHeight + 10 : 0;
       const inner = w - 36;
-      const sceneH = avail - pad - hdrH + overlap - consH;
-      const sw = Math.round(clamp(sceneH * sc.size[0] / sc.size[1], inner * 0.5, inner * 0.7));
+      const sceneH = avail - pad - hdrH + overlap - (tall ? 0 : consH);
+      const sw = Math.round(clamp(sceneH * sc.size[0] / sc.size[1], inner * 0.5, tall ? inner - 310 : inner * 0.7));
       const v = sw - 18 + "px";        // the scene bleeds 18 px into the left padding
       if (root.style.getPropertyValue("--sw") !== v) root.style.setProperty("--sw", v);
     },

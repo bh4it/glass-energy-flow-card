@@ -13,7 +13,7 @@
  * v0.8.5 — battery values keep clear of the artwork; second line for every consumer
  */
 (function () {
-  const CARD_VERSION = "1.7.0-beta.7";
+  const CARD_VERSION = "1.7.0-beta.8";
 
   // ------------------------------------------------------------------ i18n
   // The UI follows Home Assistant's language: German for "de", English
@@ -2096,12 +2096,109 @@ function step1Battery(x,y,w,h,b,compact) {
     }
     const frost = app.weather === "frost" || (temp != null && temp <= 0 && kind !== "rainy" && kind !== "snowy");
     if (kind === "frost") kind = "sunny";
-    return { kind, frost };
+    // Sun position: azimuth east → west runs left → right, elevation sets the height (rounded so
+    // the sky only redraws every few minutes).
+    const sa = (hass.states["sun.sun"] || {}).attributes || {};
+    const el = Number(sa.elevation), az = Number(sa.azimuth);
+    const sun = Number.isFinite(el) && Number.isFinite(az)
+      ? { u: Math.round(Math.max(0, Math.min(1, (az - 60) / 240)) * 100) / 100, v: Math.round(Math.max(0, Math.min(1, el / 35)) * 50) / 50, low: el < 7 }
+      : { u: 0.3, v: 0.6, low: false };
+    return { kind, frost, sun };
+  }
+
+  /** Easter Sunday (Gregorian, anonymous algorithm) as [month, day]. */
+  function appEaster(y) {
+    const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+    return [Math.floor((h + l - 7 * m + 114) / 31), ((h + l - 7 * m + 114) % 31) + 1];
+  }
+
+  /** Seasonal theme for the sky: birthdays, New Year's Eve, Christmas, Advent, Halloween, St. Martin, Easter. */
+  function appTheme(c, now = new Date()) {
+    const app = c.app || {};
+    if (app.themes === false || app.themes === "off") return null;
+    const y = now.getFullYear(), day = (m, d) => new Date(y, m - 1, d).getTime();
+    const t = new Date(y, now.getMonth(), now.getDate()).getTime(), D = 86400000;
+    const birthdays = (Array.isArray(app.birthdays) ? app.birthdays : []).filter((b) => b && b.date)
+      .filter((b) => { const [m, d] = String(b.date).split("-").slice(-2).map(Number); return day(m, d) === t; });
+    const xmas = day(12, 24), adv4 = xmas - new Date(xmas).getDay() * D, adv1 = adv4 - 21 * D;
+    const [em, ed] = appEaster(y), easter = day(em, ed);
+    const forced = typeof app.themes === "string" && app.themes !== "auto" ? app.themes : null;
+    const pick = forced || (birthdays.length ? "birthday"
+      : t === day(12, 31) || t === day(1, 1) ? "newyear"
+      : t >= xmas && t <= day(12, 26) ? "christmas"
+      : t >= adv1 && t < xmas ? "advent"
+      : t > day(12, 26) || t <= day(1, 6) ? "winter"
+      : t === day(10, 31) ? "halloween"
+      : t === day(11, 11) ? "martin"
+      : t >= easter - 2 * D && t <= easter + D ? "easter" : null);
+    if (!pick) return null;
+    const week = Math.max(1, Math.min(4, Math.floor((t - adv1) / (7 * D)) + 1));
+    const names = birthdays.map((b) => b.name).filter(Boolean);
+    const label = {
+      birthday: names.length ? `${T("Alles Gute")}, ${names.join(" & ")}!` : T("Alles Gute zum Geburtstag!"),
+      newyear: now.getMonth() === 0 ? T("Frohes neues Jahr!") : T("Guten Rutsch!"),
+      christmas: T("Frohe Weihnachten"), advent: `${forced ? 1 : week}. Advent`, winter: "",
+      halloween: "Halloween", martin: "St. Martin", easter: T("Frohe Ostern"),
+    }[pick];
+    return { key: pick, label: label == null ? "" : label, candles: pick === "advent" ? (forced ? 1 : week) : pick === "christmas" ? 4 : 0 };
+  }
+
+  /** Header chip for the theme (small Advent wreath with the lit candles, or an icon). */
+  function appThemeChip(th) {
+    if (!th || !th.label) return "";
+    const icon = { birthday: "mdi:cake-variant", newyear: "mdi:firework", christmas: "mdi:pine-tree", halloween: "mdi:halloween", easter: "mdi:egg-easter" }[th.key];
+    const wreath = th.key === "advent" ? `<svg class="wreath" viewBox="0 0 34 20"><ellipse cx="17" cy="15.5" rx="15" ry="3.6" fill="#2f7d4f"/><ellipse cx="17" cy="15" rx="10" ry="1.8" fill="#1d5434"/>${
+      [7, 13.5, 20.5, 27].map((x, i) => `<rect x="${x - 1.6}" y="${i % 2 ? 7.5 : 8.5}" width="3.2" height="${i % 2 ? 7.5 : 6.5}" rx=".8" fill="#e8dcc0"/>${i < th.candles
+        ? `<path class="flame" d="M${x} ${i % 2 ? 2.4 : 3.4}c1.5 1.7 1.7 3 0 4.4c-1.7-1.4-1.5-2.7 0-4.4z" fill="#ffc25a"/>` : ""}`).join("")}<circle cx="11" cy="16" r="1" fill="#d23b3b"/><circle cx="24" cy="16.4" r="1" fill="#d23b3b"/></svg>`
+      : th.key === "martin" ? `<svg class="wreath" viewBox="0 0 20 20"><path d="M10 1v4" stroke="#c9d4e3" stroke-width="1.2"/><circle cx="10" cy="12" r="6.5" fill="#ff9d3b"/><circle cx="10" cy="12" r="3.6" fill="#ffd77a"/></svg>`
+      : `<ha-icon icon="${icon}"></ha-icon>`;
+    return `<div class="chip theme th-${th.key}">${wreath}<span>${esc(th.label)}</span></div>`;
+  }
+
+  /** Decorations for the theme on the sky (lights, fireworks, bats, lanterns, eggs, balloons). */
+  function appThemeFx(th) {
+    if (!th) return "";
+    const R = (s) => { const x = Math.sin(s * 91.7) * 10000; return x - Math.floor(x); };
+    // A garland of three swags along the top edge with bulbs (colors cycle through `cols`).
+    const garland = (cols, kind = "bulb") => {
+      const sw = 3, n = 9, sag = 16; let wire = "", bulbs = "";
+      for (let k = 0; k < sw; k++) {
+        const x0 = (k * 100) / sw, x1 = ((k + 1) * 100) / sw;
+        wire += `M${x0} 1Q${(x0 + x1) / 2} ${1 + sag * 2} ${x1} 1`;
+        for (let i = 1; i < n; i++) {
+          const u = i / n, x = x0 + (x1 - x0) * u, y = 1 + sag * 4 * u * (1 - u);
+          const col = cols[(k * n + i) % cols.length];
+          bulbs += `<i class="${kind}" style="left:${x.toFixed(2)}%;top:${(y + 1).toFixed(1)}px;--c:${col};animation-delay:${(-R(k * n + i) * 3).toFixed(2)}s"></i>`;
+        }
+      }
+      return `<div class="garland"><svg viewBox="0 0 100 40" preserveAspectRatio="none"><path d="${wire}" vector-effect="non-scaling-stroke"/></svg>${bulbs}</div>`;
+    };
+    const warm = ["#ffd98a", "#ffe9b8", "#ffc56b"], color = ["#ff5d5d", "#ffd35a", "#5ee08a", "#6cb6ff", "#ff8de1"];
+    switch (th.key) {
+      case "advent": case "winter": return garland(warm) + `<div class="sparkles"></div>`;
+      case "christmas": return garland(color) + `<div class="sparkles gold"></div><i class="comet"></i>`;
+      case "newyear": return [[12, 30, "#ffcf5a"], [24, 19, "#6cd6ff"], [40, 16, "#ff6fb1"], [53, 20, "#9dff8a"], [8, 42, "#c58bff"]].map(([x, y, col], i) =>
+        `<i class="burst" style="left:${x}%;top:${y}%;--c:${col};animation-delay:${-i * 0.9}s">${Array.from({ length: 12 }, (_, k) => `<b style="transform:rotate(${k * 30}deg)"></b>`).join("")}</i>`).join("");
+      case "halloween": return `<div class="hglow"></div><div class="hmoon"></div>` + [[10, 22, 1.1], [19, 30, .8], [24, 21, .65], [7, 34, .7], [36, 15, .6]].map(([x, y, s], i) =>
+        `<i class="bat" style="left:${x}%;top:${y}%;--s:${s};animation-delay:${-i * 2.3}s"><svg viewBox="0 0 40 16"><path d="M20 6c-1-2-2-3-2-3s0 2-1 3c-3-3-8-4-13-3c3 1 4 3 4 5c2-1 5-1 6 1c1-1 3-1 4 1c1-2 3-2 4-1c1-2 4-2 6-1c0-2 1-4 4-5c-5-1-10 0-13 3c-1-1-1-3-1-3s-1 1-2 3z"/></svg></i>`).join("");
+      case "martin": return [[5, 24], [10, 30], [15, 25], [20, 31], [25, 26]].map(([x, y], i) =>
+        `<i class="lantern" style="left:${x}%;top:${y}%;--c:${["#ff9d3b", "#ffd35a", "#ff6f6f", "#7fd0ff", "#b98cff"][i]};animation-delay:${-i * 0.7}s"><b></b></i>`).join("");
+      case "easter": return garland(["#ffb3c7", "#b8e6ff", "#fff1a6", "#c8f5c0", "#e0c8ff"], "egg");
+      case "birthday": return garland(color, "flag") + [[6, 40, "#ff5d8a"], [12, 46, "#5ec8ff"], [18, 42, "#ffd35a"]].map(([x, y, col], i) =>
+        `<i class="balloon" style="left:${x}%;top:${y}%;--c:${col};animation-delay:${-i * 1.3}s"></i>`).join("");
+      default: return "";
+    }
   }
 
   /** Effect layer (sun, clouds, rain, snow, frost, night) as plain markup. */
-  function appWeatherFx(w, scene) {
+  function appWeatherFx(w, scene, box = [6, 88, 6, 52]) {
     const [VW, VH] = scene.size;
+    // box = [x left, x right, y highest, y at the horizon] in % of the layer
+    const sn = w.sun || { u: 0.3, v: 0.6 }, sx = box[0] + (box[1] - box[0]) * sn.u, sy = box[3] - (box[3] - box[2]) * Math.pow(sn.v, 0.8);
+    const pos = `--sx:${sx.toFixed(1)}%;--sy:${sy.toFixed(1)}%`;
+    const sun = (cls, rays) => `${rays ? `<div class="rays" style="${pos}"></div>` : ""}<div class="sun${sn.low ? " low" : ""} ${cls}" style="${pos}"></div><div class="disc${sn.low ? " low" : ""} ${cls}" style="${pos}"></div>`;
     const cloud = (cls, l, t, wd, dly = 0) =>
       `<div class="cloud ${cls}" style="left:${l}%;top:${t}%;width:${wd}%;animation-delay:${dly}s"></div>`;
     const crystals = (n) => {
@@ -2117,8 +2214,9 @@ function step1Battery(x,y,w,h,b,compact) {
     };
     let fx = "";
     switch (w.kind) {
-      case "sunny": fx = `<div class="warm"></div><div class="rays"></div><div class="sun"></div>${cloud("", 66, 6, 16, -20)}`; break;
-      case "partly": fx = `<div class="rays" style="opacity:.22"></div><div class="sun" style="opacity:.75"></div>${cloud("", 58, 4, 20, -10)}${cloud("", 20, 0, 16, -40)}`; break;
+      case "sunny": fx = `<div class="warm"></div>${sun("", true)}${cloud("", Math.min(70, sx + 26), Math.max(0, sy - 14), 14, -20)}`; break;
+      // Partly cloudy: no rays, a weaker sun and a cloud drifting across it
+      case "partly": fx = `${sun("veiled", false)}${cloud("grey", sx - 12, sy - 9, 22, -10)}${cloud("grey", Math.min(64, sx + 18), Math.max(0, sy - 18), 24, -40)}${cloud("grey", Math.max(0, sx - 34), Math.max(0, sy - 22), 18, -60)}`; break;
       case "cloudy": fx = `${cloud("grey", 4, 0, 30)}${cloud("grey", 40, -3, 32, -30)}${cloud("grey", 72, 2, 28, -55)}`; break;
       case "fog": fx = `${cloud("grey", 10, 0, 30)}<div class="fog"></div>`; break;
       case "rainy": fx = `${cloud("dark", 2, 0, 30)}${cloud("dark", 34, -4, 34, -30)}${cloud("dark", 70, 2, 30, -50)}<div class="puddle"></div><div class="rain"></div><div class="rain b"></div>`; break;
@@ -2346,12 +2444,18 @@ function step1Battery(x,y,w,h,b,compact) {
     /* Dark page: the sky effects stay subtle so a cut-out scene keeps its edges */
     .dark.app { background:var(--app-bg, radial-gradient(ellipse 70% 60% at 40% 40%, #13244a 0%, #0b1530 55%, #050913 100%)); }
     .dark .fx .warm, .dark .fx .fog, .dark .fx .puddle, .dark .fx .snowcap { opacity:.35; }
-    .dark .fx .cloud { opacity:.35; } .dark .fx .rain { opacity:.22; } .dark .fx .rain.b { opacity:.14; } .dark .fx .snow { opacity:.6; } .dark .fx .rays { opacity:.12; } .dark .fx .sun { opacity:.45; }
+    .dark .fx .cloud { opacity:.35; } .dark .fx .rain { opacity:.22; } .dark .fx .rain.b { opacity:.14; } .dark .fx .snow { opacity:.6; } .dark .fx .rays { opacity:.12; } .dark .fx .sun { opacity:.55; } .dark .fx .sun.veiled { opacity:.35; }
+    .dark .fx .cloud.grey { opacity:.5; } .dark.w-cloudy .fx .cloud.grey { opacity:.5; }
     .dark.w-sunny .photo, .dark.w-sunny .over { filter:none; }
-    .fx .sun { position:absolute; left:4%; top:2%; width:34%; aspect-ratio:1; border-radius:50%;
-      background:radial-gradient(circle, rgba(255,250,228,.95) 0 6%, rgba(255,238,190,.55) 14%, rgba(255,236,200,.18) 34%, rgba(255,240,215,0) 62%);
+    .fx .sun { position:absolute; left:var(--sx, 20%); top:var(--sy, 18%); width:30%; aspect-ratio:1; border-radius:50%; translate:-50% -50%;
+      background:radial-gradient(circle, rgba(255,246,214,.75) 0 7%, rgba(255,238,190,.38) 16%, rgba(255,236,200,.12) 36%, rgba(255,240,215,0) 62%);
       animation:app-pulse 6s ease-in-out infinite; }
-    .fx .rays { position:absolute; left:-8%; top:-20%; width:58%; aspect-ratio:1; opacity:.35;
+    .fx .disc { position:absolute; left:var(--sx, 20%); top:var(--sy, 18%); width:3.4%; min-width:22px; aspect-ratio:1; border-radius:50%; translate:-50% -50%;
+      background:radial-gradient(circle at 42% 40%, #fffdf2, #fff3c8 55%, #ffe39a); box-shadow:0 0 18px 6px rgba(255,236,170,.55); }
+    .fx .sun.low { background:radial-gradient(circle, rgba(255,200,130,.8) 0 7%, rgba(255,160,90,.4) 18%, rgba(255,140,80,.12) 38%, rgba(255,140,80,0) 62%); }
+    .fx .disc.low { background:radial-gradient(circle at 42% 40%, #fff1d6, #ffc27a 60%, #ff9a52); box-shadow:0 0 22px 8px rgba(255,150,80,.5); }
+    .fx .sun.veiled { opacity:.55; } .fx .disc.veiled { opacity:.7; box-shadow:0 0 26px 12px rgba(255,236,190,.3); }
+    .fx .rays { position:absolute; left:var(--sx, 20%); top:var(--sy, 18%); translate:-50% -50%; width:58%; aspect-ratio:1; opacity:.35;
       background:repeating-conic-gradient(from 0deg, rgba(255,246,214,.55) 0 4deg, rgba(255,246,214,0) 4deg 18deg);
       -webkit-mask-image:radial-gradient(circle, #000 10%, transparent 62%); mask-image:radial-gradient(circle, #000 10%, transparent 62%);
       animation:app-spin 90s linear infinite; }
@@ -2408,6 +2512,48 @@ function step1Battery(x,y,w,h,b,compact) {
     @keyframes app-snow { to { background-position:20px 80px, 60px 200px, 30px 85px; } }
     @keyframes app-twinkle { 50% { opacity:.5; } }
     @keyframes app-led { 50% { opacity:.55; } }
+    /* Seasonal themes on the sky */
+    .thchip { display:contents; } .chip.theme { font-weight:600; } .chip.theme .wreath { width:26px; height:16px; flex:none; overflow:visible; }
+    .chip.theme.th-martin .wreath { width:16px; }
+    .chip.theme .flame { transform-box:fill-box; transform-origin:50% 100%; animation:app-flame 1.6s ease-in-out infinite; }
+    .chip.theme ha-icon { color:#ffb84a !important; } .th-christmas ha-icon { color:#5ee08a !important; } .th-easter ha-icon { color:#ffb3c7 !important; }
+    .fx .garland { position:absolute; left:0; right:0; top:0; height:40px; }
+    .fx .garland svg { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+    .fx .garland path { fill:none; stroke:rgba(40,60,50,.7); stroke-width:1.2; }
+    .dark .fx .garland path { stroke:rgba(150,170,160,.45); }
+    .fx .garland i { position:absolute; translate:-50% 0; }
+    .fx .garland .bulb { width:6px; height:9px; border-radius:50% 50% 45% 45%; background:var(--c); box-shadow:0 0 8px 3px var(--c); animation:app-twinkle 3s ease-in-out infinite; }
+    .fx .garland .egg { width:9px; height:12px; border-radius:50% 50% 50% 50% / 60% 60% 40% 40%; background:var(--c); box-shadow:0 1px 3px rgba(0,0,0,.25); }
+    .fx .garland .flag { width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; border-top:12px solid var(--c); }
+    .fx .sparkles { position:absolute; inset:0 0 50% 0; animation:app-twinkle 5s ease-in-out infinite;
+      background-image:radial-gradient(circle, rgba(255,250,230,.9) 0 1px, transparent 1.8px), radial-gradient(circle, rgba(255,240,200,.7) 0 .8px, transparent 1.5px);
+      background-size:131px 83px, 71px 113px; background-position:23px 31px, 57px 12px; }
+    .fx .sparkles.gold { background-image:radial-gradient(circle, rgba(255,215,120,.95) 0 1.4px, transparent 2.2px), radial-gradient(circle, rgba(255,240,200,.8) 0 .9px, transparent 1.6px); }
+    .fx .comet { position:absolute; left:10%; top:8%; width:90px; height:2px; border-radius:2px; rotate:-18deg; opacity:0;
+      background:linear-gradient(90deg, rgba(255,240,200,0), rgba(255,240,200,.9)); animation:app-comet 9s ease-in infinite; }
+    .fx .burst { position:absolute; width:160px; height:160px; translate:-50% -50%; animation:app-burst 3.6s ease-out infinite; }
+    .fx .burst b { position:absolute; left:50%; top:50%; width:2px; height:46%; margin-left:-1px; transform-origin:50% 0;
+      background:linear-gradient(180deg, transparent 0 30%, var(--c) 92%, #fff); border-radius:2px; box-shadow:0 0 6px var(--c); }
+    .fx .hglow { position:absolute; inset:0; background:radial-gradient(ellipse 70% 45% at 30% 100%, rgba(255,130,40,.22), transparent 70%),
+      radial-gradient(ellipse 60% 40% at 50% 0%, rgba(140,70,200,.28), transparent 70%); }
+    .fx .hmoon { position:absolute; left:15%; top:27%; width:84px; aspect-ratio:1; translate:-50% -50%; border-radius:50%;
+      background:radial-gradient(circle at 40% 38%, #ffe2a8, #ffb04a 58%, #f08a2a); box-shadow:0 0 40px 14px rgba(255,140,50,.45); }
+    .fx .bat { position:absolute; width:calc(54px * var(--s)); animation:app-bat 14s ease-in-out infinite; }
+    .fx .bat svg { width:100%; display:block; fill:#14101c; filter:drop-shadow(0 0 4px rgba(255,150,60,.55)); animation:app-flap .35s ease-in-out infinite alternate; transform-origin:50% 40%; }
+    .fx .lantern { position:absolute; width:28px; height:28px; translate:-50% 0; transform-origin:50% -24px; animation:app-sway 3.2s ease-in-out infinite; }
+    .fx .lantern::before { content:""; position:absolute; left:50%; top:-24px; width:1px; height:24px; background:rgba(200,210,225,.6); }
+    .fx .lantern b { position:absolute; inset:0; border-radius:50%; background:radial-gradient(circle at 45% 40%, #fff3c2, var(--c) 60%);
+      box-shadow:0 0 14px 6px color-mix(in srgb, var(--c) 55%, transparent); animation:app-twinkle 2.2s ease-in-out infinite; }
+    .fx .balloon { position:absolute; width:22px; height:28px; border-radius:50% 50% 48% 48%; translate:-50% 0;
+      background:radial-gradient(circle at 35% 30%, rgba(255,255,255,.75) 0 10%, var(--c) 36%); animation:app-float 6s ease-in-out infinite; }
+    .fx .balloon::after { content:""; position:absolute; left:50%; top:100%; width:1px; height:36px; background:rgba(220,230,240,.55); }
+    @keyframes app-flame { 50% { transform:scaleY(.82) scaleX(1.1); opacity:.85; } }
+    @keyframes app-comet { 0%, 70% { opacity:0; transform:translate(0, 0); } 74% { opacity:1; } 86% { opacity:0; transform:translate(260px, 84px); } 100% { opacity:0; } }
+    @keyframes app-burst { 0% { transform:scale(.15); opacity:0; } 12% { opacity:1; } 60% { transform:scale(1); opacity:.9; } 100% { transform:scale(1.15) translateY(12px); opacity:0; } }
+    @keyframes app-bat { 0%, 100% { transform:translate(0, 0); } 25% { transform:translate(60px, -14px); } 50% { transform:translate(120px, 6px); } 75% { transform:translate(50px, 18px); } }
+    @keyframes app-flap { to { transform:scaleY(.55); } }
+    @keyframes app-sway { 0%, 100% { rotate:-6deg; } 50% { rotate:6deg; } }
+    @keyframes app-float { 0%, 100% { transform:translateY(0) rotate(-3deg); } 50% { transform:translateY(-12px) rotate(3deg); } }
     @media (prefers-reduced-motion: reduce) { .fx *, .led-on, .acfx * { animation:none !important; } .ac i { display:none; } }
   `;
 
@@ -2444,7 +2590,7 @@ function step1Battery(x,y,w,h,b,compact) {
         <div class="app" id="app"><div class="sky fx" id="sky"></div>
           <div class="hdr">
             <div><div class="tl"><div class="t">${esc(c.title || T("Energie"))}</div><div class="pvsum" id="pvsum"></div></div><div class="meters" id="meters"></div></div>
-            <div class="chips">${[
+            <div class="chips"><div id="themeChip" class="thchip"></div>${[
               h.temp ? chip("headerTemp", "mdi:thermometer") : "",
               h.humidity ? chip("headerHumidity", "mdi:water-percent", 1) : "",
               h.weather ? chip("headerWeather", "mdi:weather-cloudy") : "",
@@ -2662,13 +2808,26 @@ function step1Battery(x,y,w,h,b,compact) {
       // scene layers
       // Dark page: the sky (sun, clouds, rain, snow, frost, stars, moon) spans the whole card and
       // only the lit windows stay on the house; otherwise all effects sit on the scene.
+      const th = appTheme(c), thFx = appThemeFx(th);
+      // Halloween brings its own big orange moon
+      const wfx = (...a) => { const m = appWeatherFx(...a); return th && th.key === "halloween" ? m.replace(/<div class="moon"[^>]*><\/div>/, "") : m; };
+      this._appSet("themeChip", appThemeChip(th));
       if (dark) {
-        this._appSet("sky", appWeatherFx(wx, { ...sc, windows: null }));
+        // The sun runs over the free sky left of the value column; low sun sits behind the roofs.
+        // On the phone the free sky is the strip between the header and the house (measured).
+        let box = [5, 58, 14, 31];
+        if (narrow) {
+          const hd = root.querySelector(".hdr"), scn = root.querySelector(".scene"), H = root.clientHeight;
+          const top = H && hd ? (hd.offsetTop + hd.offsetHeight) / H * 100 + 1.5 : 8;
+          const bot = H && scn ? (scn.offsetTop + scn.offsetWidth * 0.12) / H * 100 : 14;
+          box = [12, 88, Math.round(top * 2) / 2, Math.round(Math.max(top + 2, bot) * 2) / 2];
+        }
+        this._appSet("sky", wfx(wx, { ...sc, windows: null }, box) + thFx);
         this._appSet("fx", wx.kind === "night" && sc.windows ? sc.windows.map(([l, t, sz]) =>
           `<div class="glow" style="left:${l}%;top:${t}%;width:${sz}%"></div>`).join("") : "");
       } else {
         this._appSet("sky", "");
-        this._appSet("fx", appWeatherFx(wx, sc));
+        this._appSet("fx", wfx(wx, sc) + thFx);
       }
       this._appSet("bats", appBatteriesSvg(d.batteries, sc.batteries));
       {

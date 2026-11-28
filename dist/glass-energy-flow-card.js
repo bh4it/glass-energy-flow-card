@@ -2080,7 +2080,7 @@ function step1Battery(x,y,w,h,b,compact) {
   function appWeather(hass, c) {
     const app = c.app || {};
     if (app.weather === false || app.weather === "off") return { kind: "none", frost: false };
-    let kind = typeof app.weather === "string" && app.weather !== "auto" ? app.weather : null;
+    let kind = typeof app.weather === "string" && app.weather !== "auto" ? app.weather : null, partlyNight = false;
     const temp = num(hass, c.header && c.header.temp);
     if (!kind) {
       const w = c.header && c.header.weather ? hass.states[c.header.weather] : null;
@@ -2092,8 +2092,10 @@ function step1Battery(x,y,w,h,b,compact) {
         snowy: "snowy", "snowy-rainy": "snowy", hail: "snowy",
       })[s] || (w ? "cloudy" : "sunny");
       const sun = hass.states["sun.sun"];
-      if (sun && sun.state === "below_horizon" && kind !== "rainy" && kind !== "snowy") kind = "night";
     }
+    const sunObj = hass.states["sun.sun"];
+    const night = kind === "night" || (!!sunObj && sunObj.state === "below_horizon");
+    if (night && (kind === "sunny" || kind === "partly")) { if (kind === "partly") partlyNight = true; kind = "night"; }
     const frost = app.weather === "frost" || (temp != null && temp <= 0 && kind !== "rainy" && kind !== "snowy");
     if (kind === "frost") kind = "sunny";
     // Sun position: azimuth east → west runs left → right, elevation sets the height (rounded so
@@ -2103,7 +2105,50 @@ function step1Battery(x,y,w,h,b,compact) {
     const sun = Number.isFinite(el) && Number.isFinite(az)
       ? { u: Math.round(Math.max(0, Math.min(1, (az - 60) / 240)) * 100) / 100, v: Math.round(Math.max(0, Math.min(1, el / 35)) * 50) / 50, low: el < 7 }
       : { u: 0.3, v: 0.6, low: false };
-    return { kind, frost, sun };
+    // Moon: real phase and position for the home location (hass.config), shown at night
+    const lat = Number(hass.config && hass.config.latitude), lng = Number(hass.config && hass.config.longitude);
+    const mo = appMoon(new Date(), Number.isFinite(lat) ? lat : null, Number.isFinite(lng) ? lng : null);
+    return { kind, frost, sun, night, partlyNight, moon: mo };
+  }
+
+  /** Moon phase, lit fraction, bright-limb tilt and (with a location) position. Low-precision
+   *  astronomical formulas (accuracy about a degree), enough for a picture. */
+  function appMoon(date, lat, lng) {
+    const rad = Math.PI / 180, e = rad * 23.4397;
+    const d = date.valueOf() / 86400000 - 0.5 + 2440588 - 2451545;
+    const ra = (l, b) => Math.atan2(Math.sin(l) * Math.cos(e) - Math.tan(b) * Math.sin(e), Math.cos(l));
+    const dec = (l, b) => Math.asin(Math.sin(b) * Math.cos(e) + Math.cos(b) * Math.sin(e) * Math.sin(l));
+    const M = rad * (357.5291 + 0.98560028 * d);
+    const Ls = M + rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M)) + rad * 102.9372 + Math.PI;
+    const s = { ra: ra(Ls, 0), dec: dec(Ls, 0), dist: 149598000 };
+    const L = rad * (218.316 + 13.176396 * d), Mm = rad * (134.963 + 13.064993 * d), F = rad * (93.272 + 13.229350 * d);
+    const l = L + rad * 6.289 * Math.sin(Mm), b = rad * 5.128 * Math.sin(F);
+    const m = { ra: ra(l, b), dec: dec(l, b), dist: 385001 - 20905 * Math.cos(Mm) };
+    const phi = Math.acos(Math.sin(s.dec) * Math.sin(m.dec) + Math.cos(s.dec) * Math.cos(m.dec) * Math.cos(s.ra - m.ra));
+    const inc = Math.atan2(s.dist * Math.sin(phi), m.dist - s.dist * Math.cos(phi));
+    const ang = Math.atan2(Math.cos(s.dec) * Math.sin(s.ra - m.ra), Math.sin(s.dec) * Math.cos(m.dec) - Math.cos(s.dec) * Math.sin(m.dec) * Math.cos(s.ra - m.ra));
+    const out = { frac: (1 + Math.cos(inc)) / 2, phase: 0.5 + 0.5 * inc * (ang < 0 ? -1 : 1) / Math.PI, alt: null, az: null, limb: ang < 0 ? -90 : 90 };
+    if (lat != null && lng != null) {
+      const p = rad * lat, H = rad * (280.16 + 360.9856235 * d) + rad * lng - m.ra;
+      out.alt = Math.asin(Math.sin(p) * Math.sin(m.dec) + Math.cos(p) * Math.cos(m.dec) * Math.cos(H)) / rad;
+      out.az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(p) - Math.tan(m.dec) * Math.cos(p)) / rad + 180;
+      // bright limb measured anticlockwise from the top of the disk, as seen from this place
+      const pa = Math.atan2(Math.sin(H), Math.tan(p) * Math.cos(m.dec) - Math.sin(m.dec) * Math.cos(H));
+      out.limb = (ang - pa) / rad;
+    }
+    return out;
+  }
+
+  /** The moon as SVG: lit part (crescent or gibbous) turned to the bright limb, dark part faint. */
+  function appMoonSvg(mo) {
+    const r = 20, f = Math.max(0, Math.min(1, mo.frac)), rx = Math.abs(1 - 2 * f) * r;
+    // drawn with the light on the right, then turned so the light points at the bright limb
+    const lit = f > 0.985 ? `<circle cx="0" cy="0" r="${r}"/>` : f < 0.015 ? ""
+      : `<path d="M0 ${-r}A${r} ${r} 0 0 1 0 ${r}A${rx.toFixed(2)} ${r} 0 0 ${f < 0.5 ? 0 : 1} 0 ${-r}z"/>`;
+    const rot = Math.round(-(mo.limb + 90) / 5) * 5;
+    return `<svg viewBox="-24 -24 48 48"><defs><radialGradient id="app-moonlit" cx="45%" cy="40%" r="65%"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e9e2c9"/></radialGradient></defs>
+      <circle r="${r}" fill="rgba(190,205,230,.16)"/><g transform="rotate(${rot})" fill="url(#app-moonlit)">${lit}</g>
+      <g fill="rgba(160,150,120,.18)"><circle cx="-6" cy="-5" r="4"/><circle cx="5" cy="6" r="3"/><circle cx="7" cy="-8" r="2.2"/></g></svg>`;
   }
 
   /** Easter Sunday (Gregorian, anonymous algorithm) as [month, day]. */
@@ -2221,11 +2266,23 @@ function step1Battery(x,y,w,h,b,compact) {
       case "fog": fx = `${cloud("grey", 10, 0, 30)}<div class="fog"></div>`; break;
       case "rainy": fx = `${cloud("dark", 2, 0, 30)}${cloud("dark", 34, -4, 34, -30)}${cloud("dark", 70, 2, 30, -50)}<div class="puddle"></div><div class="rain"></div><div class="rain b"></div>`; break;
       case "snowy": fx = `${cloud("grey", 6, 0, 28)}${cloud("grey", 60, -2, 32, -40)}<div class="snowcap"></div>${crystals(10)}<div class="snow"></div>`; break;
-      case "night": fx = `<div class="stars"></div><div class="moon"${Array.isArray(scene.moon) ? ` style="left:${+scene.moon[0]}%;top:${+scene.moon[1]}%;right:auto"` : ""}></div>${scene.windows ? scene.windows.map(([l, t, s]) =>
-        `<div class="glow" style="left:${l}%;top:${t}%;width:${s}%"></div>`).join("") : ""}`; break;
+      case "night": {
+        const mo = w.moon;
+        let mpos = null;
+        if (mo && mo.alt != null) {
+          if (mo.alt > -1) {
+            const u = Math.max(0, Math.min(1, (mo.az - 60) / 240)), v = Math.max(0, Math.min(1, mo.alt / 35));
+            mpos = [box[0] + (box[1] - box[0]) * Math.round(u * 100) / 100, box[3] - (box[3] - box[2]) * Math.pow(Math.round(v * 50) / 50, 0.8)];
+          }
+        } else mpos = Array.isArray(scene.moon) ? [+scene.moon[0] + 2, +scene.moon[1] + 3] : [78, 8];
+        const moonEl = mo && mpos && mo.frac > 0.015 ? `<div class="moon" style="left:${mpos[0].toFixed(1)}%;top:${mpos[1].toFixed(1)}%">${appMoonSvg(mo)}</div>` : "";
+        fx = `<div class="stars"></div>${moonEl}${w.partlyNight && mpos ? cloud("grey", mpos[0] - 6, mpos[1] - 4, 16, -10) : w.partlyNight ? cloud("grey", 30, 4, 18, -10) : ""}`;
+        break;
+      }
       default: break;
     }
     if (w.frost) fx += `<div class="frost"></div>${w.kind === "snowy" ? "" : crystals(26)}`;
+    if (w.night && scene.windows) fx += scene.windows.map(([l, t, s]) => `<div class="glow" style="left:${l}%;top:${t}%;width:${s}%"></div>`).join("");
     return fx;
   }
 
@@ -2483,7 +2540,11 @@ function step1Battery(x,y,w,h,b,compact) {
     .fx .stars { position:absolute; inset:0 0 55% 0; opacity:.8; animation:app-twinkle 4s ease-in-out infinite;
       background-image:radial-gradient(circle, #fff 0 1px, transparent 1.6px), radial-gradient(circle, rgba(255,255,255,.7) 0 .8px, transparent 1.4px);
       background-size:97px 61px, 53px 89px; background-position:13px 7px, 41px 29px; }
-    .fx .moon { position:absolute; right:22%; top:4%; width:44px; height:44px; border-radius:50%; box-shadow:-10px 6px 0 0 #f4efd8; transform:rotate(-20deg); filter:drop-shadow(0 0 12px rgba(255,246,214,.55)); }
+    .fx .moon { position:absolute; width:46px; height:46px; translate:-50% -50%; filter:drop-shadow(0 0 10px rgba(255,246,214,.45)); }
+    .fx .moon svg { width:100%; height:100%; display:block; overflow:visible; }
+    .w-night .fx .cloud.grey { filter:blur(3px) brightness(.5) saturate(.8); }
+    /* header text stays readable over clouds and the sun */
+    .app.dark .hdr .t, .app.dark .meters, .app.dark .pvsum { text-shadow:0 1px 8px rgba(4,9,22,.95), 0 0 2px rgba(4,9,22,.8); }
     .fx .glow { position:absolute; aspect-ratio:1; transform:translate(-50%,-50%); border-radius:50%; background:radial-gradient(circle, rgba(255,200,120,.6), rgba(255,200,120,0) 70%); mix-blend-mode:screen; }
     .led-on { animation:app-led 2.4s ease-in-out infinite; }
     .acfx { position:absolute; left:0; top:0; width:100%; aspect-ratio:var(--ar, 1024/568); pointer-events:none; z-index:2; }
@@ -2776,7 +2837,7 @@ function step1Battery(x,y,w,h,b,compact) {
       const wx = appWeather(hass, c);
       const app = c.app || {};
       const dark = app.dark === true || app.dark === "on" || (app.dark === "auto" && !!(hass.themes && hass.themes.darkMode));
-      root.className = `app w-${wx.kind}${wx.frost ? " frost" : ""}${narrow ? " narrow" : ""}${dark ? " dark" : ""}`;
+      root.className = `app w-${wx.kind}${wx.night && wx.kind !== "night" ? " w-night" : ""}${wx.frost ? " frost" : ""}${narrow ? " narrow" : ""}${dark ? " dark" : ""}`;
 
       // header
       const h = c.header || {};
@@ -2810,7 +2871,7 @@ function step1Battery(x,y,w,h,b,compact) {
       // only the lit windows stay on the house; otherwise all effects sit on the scene.
       const th = appTheme(c), thFx = appThemeFx(th);
       // Halloween brings its own big orange moon
-      const wfx = (...a) => { const m = appWeatherFx(...a); return th && th.key === "halloween" ? m.replace(/<div class="moon"[^>]*><\/div>/, "") : m; };
+      const wfx = (...a) => { const m = appWeatherFx(...a); return th && th.key === "halloween" ? m.replace(/<div class="moon"[^>]*>[\s\S]*?<\/svg><\/div>/, "") : m; };
       this._appSet("themeChip", appThemeChip(th));
       if (dark) {
         // The sun runs over the free sky left of the value column; low sun sits behind the roofs.
@@ -2823,7 +2884,7 @@ function step1Battery(x,y,w,h,b,compact) {
           box = [12, 88, Math.round(top * 2) / 2, Math.round(Math.max(top + 2, bot) * 2) / 2];
         }
         this._appSet("sky", wfx(wx, { ...sc, windows: null }, box) + thFx);
-        this._appSet("fx", wx.kind === "night" && sc.windows ? sc.windows.map(([l, t, sz]) =>
+        this._appSet("fx", wx.night && sc.windows ? sc.windows.map(([l, t, sz]) =>
           `<div class="glow" style="left:${l}%;top:${t}%;width:${sz}%"></div>`).join("") : "");
       } else {
         this._appSet("sky", "");

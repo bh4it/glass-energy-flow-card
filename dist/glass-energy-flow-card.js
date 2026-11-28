@@ -2160,13 +2160,19 @@ function step1Battery(x,y,w,h,b,compact) {
   }
 
   /** Seasonal theme for the sky: birthdays, New Year's Eve, Christmas, Advent, Halloween, St. Martin, Easter. */
-  function appTheme(c, now = new Date()) {
+  function appTheme(c, now = new Date(), hass = null) {
     const app = c.app || {};
     if (app.themes === false || app.themes === "off") return null;
     const y = now.getFullYear(), day = (m, d) => new Date(y, m - 1, d).getTime();
     const t = new Date(y, now.getMonth(), now.getDate()).getTime(), D = 86400000;
     const birthdays = (Array.isArray(app.birthdays) ? app.birthdays : []).filter((b) => b && b.date)
       .filter((b) => { const [m, d] = String(b.date).split("-").slice(-2).map(Number); return day(m, d) === t; });
+    // Birthdays from a Home Assistant calendar (e.g. a Local Calendar with yearly all-day events,
+    // title = name): the calendar is "on" during the event and its message is the name.
+    for (const id of [].concat(app.birthday_calendar || [])) {
+      const st = hass && hass.states[id];
+      if (st && st.state === "on" && st.attributes && st.attributes.all_day !== false) birthdays.push({ name: String(st.attributes.message || "").trim() });
+    }
     const xmas = day(12, 24), adv4 = xmas - new Date(xmas).getDay() * D, adv1 = adv4 - 21 * D;
     const [em, ed] = appEaster(y), easter = day(em, ed);
     const forced = typeof app.themes === "string" && app.themes !== "auto" ? app.themes : null;
@@ -2869,7 +2875,7 @@ function step1Battery(x,y,w,h,b,compact) {
       // scene layers
       // Dark page: the sky (sun, clouds, rain, snow, frost, stars, moon) spans the whole card and
       // only the lit windows stay on the house; otherwise all effects sit on the scene.
-      const th = appTheme(c), thFx = appThemeFx(th);
+      const th = appTheme(c, new Date(), hass), thFx = appThemeFx(th);
       // Halloween brings its own big orange moon
       const wfx = (...a) => { const m = appWeatherFx(...a); return th && th.key === "halloween" ? m.replace(/<div class="moon"[^>]*>[\s\S]*?<\/svg><\/div>/, "") : m; };
       this._appSet("themeChip", appThemeChip(th));
